@@ -1,0 +1,3701 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Tally · 早上好，Ada — 你的执行助理</title>
+<style>
+  /* =========================================================
+     Design tokens — 继承 home.html，扩展 Tally 专属变量
+     ========================================================= */
+  :root {
+    /* Surface */
+    --bg:            #fafaf9;
+    --bg-elev:       #ffffff;
+    --bg-sunken:     #f4f4f2;
+    --bg-hover:      #f0efed;
+    --bg-active:     #ebeae7;
+
+    /* Border */
+    --border:        #e8e7e4;
+    --border-strong: #d6d4d0;
+    --border-focus:  #b8b6b1;
+
+    /* Text */
+    --text:          #1a1a19;
+    --text-muted:    #6b6a66;
+    --text-faint:    #9a988f;
+    --text-inverse:  #ffffff;
+
+    /* Tally 品牌色 — 取自原 home.html 顶部渐变 dot，强化金/紫双调 */
+    --tally:         #5a4fcf;
+    --tally-2:       #8e85e8;
+    --tally-soft:    #ece9ff;
+    --tally-hover:   #4a3fb8;
+
+    /* 虎符闭合后的"金" — 中国凭证文化暗喻，但克制为现代墨金 */
+    --seal-gold:     #b88a2e;
+    --seal-gold-2:   #d4a94a;
+    --seal-gold-soft:#fbf3df;
+
+    /* Semantic */
+    --warn:          #b8651f;
+    --warn-soft:     #fdf2e3;
+    --warn-border:   #f0d9b5;
+    --ok:            #2f7a4a;
+    --ok-soft:       #e6f1ea;
+    --danger:        #b8344a;
+    --danger-soft:   #fbe7eb;
+    --info:          #2d6cb8;
+    --info-soft:     #e6effa;
+
+    /* 4 位专业 Agent 配色 */
+    --agent-pat:   #b8651f;   /* 橙 — researcher */
+    --agent-quinn: #6f47b8;   /* 紫 — analyst */
+    --agent-sage:  #2f7a4a;   /* 绿 — writer */
+    --agent-ren:   #2d6cb8;   /* 蓝 — critic */
+
+    /* Radii */
+    --r-sm: 6px;
+    --r-md: 8px;
+    --r-lg: 12px;
+    --r-xl: 16px;
+
+    /* Shadow */
+    --shadow-sm:  0 1px 2px rgba(20,20,18,0.04), 0 0 0 1px var(--border);
+    --shadow-md:  0 2px 4px rgba(20,20,18,0.04), 0 4px 12px rgba(20,20,18,0.06);
+    --shadow-lg:  0 4px 8px rgba(20,20,18,0.05), 0 12px 32px rgba(20,20,18,0.08);
+    --shadow-pop: 0 8px 24px rgba(20,20,18,0.12);
+
+    /* Font — 前置中文系统字体 */
+    --font: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+            -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
+            "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    height: 100%;
+    font-family: var(--font);
+    color: var(--text);
+    background: var(--bg);
+    font-size: 14px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  button { font-family: inherit; cursor: pointer; }
+  ::selection { background: var(--tally-soft); color: var(--text); }
+  a { color: var(--tally); text-decoration: none; }
+
+  /* =========================================================
+     App shell
+     ========================================================= */
+  .app {
+    display: grid;
+    grid-template-rows: 52px auto auto 42px 1fr;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* =========================================================
+     ============== 虎符 SVG 系统（v3 — 抽象虎头剪影） ==============
+     ---------------------------------------------------------
+     核心隐喻：虎符 = 抽象虎头 + 中间垂直劈开成左右两半
+     一眼能看出：① 是虎    ② 分了左右两半（半 = 凭证）
+
+     基础结构（在 SVG inline）：
+       <svg class="tally" data-state="..." viewBox="0 0 24 24">
+         <g class="tally-half tally-left">   <!-- 左半虎头 -->
+           <path class="t-face" />           — 脸（半圆+方下巴）
+           <path class="t-ear"  />           — 圆耳
+           <path class="t-mark" />           — "王"字纹半边（额头）
+           <circle class="t-eye" />          — 眼睛
+         </g>
+         <g class="tally-half tally-right">  <!-- 右半虎头（镜像） -->
+           ... 同上对称
+         </g>
+       </svg>
+
+     状态规则（不再用虚线 / 裂痕，全部用 fill/stroke + 间隙）：
+       - pending  待你拍板：左半「实心」橙色 + 右半「线框」橙色 + 间隙 1.5px
+                              （隐喻：你那半在手、对方那半未回）
+       - working  进行中  ：两半都是线框 + 半透明 fill（受派人 Agent 色） + 间隙 1.5px
+                              （隐喻：在路上）
+       - blocked  卡住    ：左半实心红 + 右半线框红 + 间隙 3.5px + 整体抖动
+                              （隐喻：两半离得越来越远）
+       - sealed   已闭合  ：两半都实心墨金 + 间隙 0（完全合拢） + 内部微光
+                              （隐喻：两半合一）
+     ========================================================= */
+  .tally {
+    display: inline-block;
+    flex-shrink: 0;
+    overflow: visible;
+  }
+  /* 默认：脸、耳、纹、眼用 currentColor，便于状态切色 */
+  .tally .t-face,
+  .tally .t-ear,
+  .tally .t-mark {
+    fill: none;
+    stroke: var(--border-strong);
+    stroke-width: 1.4;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+    transition: fill 220ms ease, stroke 220ms ease, opacity 220ms ease;
+  }
+  .tally .t-eye {
+    fill: var(--border-strong);
+    transition: fill 220ms ease, opacity 220ms ease;
+  }
+  .tally .t-glow {
+    opacity: 0;
+    fill: var(--seal-gold-soft);
+    transition: opacity 260ms ease;
+  }
+  /* 左右两半的"分开"通过 transform 控制（默认有 1.5px 间隙） */
+  .tally .tally-half {
+    transition: transform 260ms cubic-bezier(.4,0,.2,1);
+    transform-box: fill-box;
+  }
+  .tally .tally-left  { transform: translateX(-0.75px); }
+  .tally .tally-right { transform: translateX(0.75px); }
+
+  /* ----- 状态：pending（待拍板：左半实心、右半空心，1.5px 间隙） ----- */
+  .tally[data-state="pending"] .t-face,
+  .tally[data-state="pending"] .t-ear,
+  .tally[data-state="pending"] .t-mark {
+    stroke: var(--warn);
+  }
+  .tally[data-state="pending"] .t-eye { fill: var(--warn); }
+  /* 左半填充实心（你手上那半） */
+  .tally[data-state="pending"] .tally-left .t-face,
+  .tally[data-state="pending"] .tally-left .t-ear {
+    fill: var(--warn);
+  }
+  .tally[data-state="pending"] .tally-left .t-mark { stroke: #fff; }
+  .tally[data-state="pending"] .tally-left .t-eye { fill: #fff; }
+  /* 右半保持线框（对方那半未回） */
+  .tally[data-state="pending"] .tally-right { animation: pendingBreath 1.9s ease-in-out infinite; }
+  @keyframes pendingBreath {
+    0%, 100% { opacity: 0.7; transform: translateX(0.75px); }
+    50%      { opacity: 1;   transform: translateX(1.4px); }
+  }
+
+  /* ----- 状态：working（进行中：两半线框 + 半透明 fill） ----- */
+  .tally[data-state="working"] .t-face,
+  .tally[data-state="working"] .t-ear,
+  .tally[data-state="working"] .t-mark {
+    stroke: currentColor;
+    opacity: 0.85;
+  }
+  .tally[data-state="working"] .t-face,
+  .tally[data-state="working"] .t-ear {
+    fill: currentColor;
+    fill-opacity: 0.14;
+  }
+  .tally[data-state="working"] .t-eye { fill: currentColor; opacity: 0.85; }
+  .tally[data-state="working"] .tally-left  { animation: workingDrift 2.6s ease-in-out infinite; }
+  .tally[data-state="working"] .tally-right { animation: workingDrift 2.6s ease-in-out infinite reverse; }
+  @keyframes workingDrift {
+    0%, 100% { transform: translateX(-0.6px); }
+    50%      { transform: translateX(-1.2px); }
+  }
+
+  /* ----- 状态：blocked（卡住：左实右空红色 + 间隙 3.5px + 抖动） ----- */
+  .tally[data-state="blocked"] .t-face,
+  .tally[data-state="blocked"] .t-ear,
+  .tally[data-state="blocked"] .t-mark {
+    stroke: var(--danger);
+  }
+  .tally[data-state="blocked"] .t-eye { fill: var(--danger); }
+  .tally[data-state="blocked"] .tally-left .t-face,
+  .tally[data-state="blocked"] .tally-left .t-ear {
+    fill: var(--danger);
+  }
+  .tally[data-state="blocked"] .tally-left .t-mark { stroke: #fff; }
+  .tally[data-state="blocked"] .tally-left .t-eye { fill: #fff; }
+  /* 间隙变大（3.5px） */
+  .tally[data-state="blocked"] .tally-left  { transform: translateX(-1.75px); }
+  .tally[data-state="blocked"] .tally-right { transform: translateX(1.75px); }
+  /* 整体微抖（裂离感） */
+  .tally[data-state="blocked"] { animation: blockedShake 1.6s ease-in-out infinite; }
+  @keyframes blockedShake {
+    0%, 100% { transform: translateX(0); }
+    20%      { transform: translateX(-0.6px); }
+    40%      { transform: translateX(0.6px); }
+    60%      { transform: translateX(-0.4px); }
+    80%      { transform: translateX(0.4px); }
+  }
+
+  /* ----- 状态：sealed（已闭合：完全合拢 + 实心墨金 + 微光） ----- */
+  .tally[data-state="sealed"] .t-face,
+  .tally[data-state="sealed"] .t-ear {
+    stroke: var(--seal-gold);
+    fill: var(--seal-gold);
+  }
+  .tally[data-state="sealed"] .t-mark {
+    stroke: var(--seal-gold-soft);
+    stroke-width: 1.5;
+  }
+  .tally[data-state="sealed"] .t-eye { fill: var(--seal-gold-soft); }
+  .tally[data-state="sealed"] .t-glow { opacity: 0.55; }
+  /* 完全合拢，间隙 0 */
+  .tally[data-state="sealed"] .tally-left  { transform: translateX(0); }
+  .tally[data-state="sealed"] .tally-right { transform: translateX(0); }
+
+  /* hover 时 pending 卡片上的虎符——演示"合一"动作 */
+  .decision-card:hover .tally[data-state="pending"] .tally-right {
+    animation: pendingHoverCloseHint 1.4s ease-in-out infinite;
+  }
+  @keyframes pendingHoverCloseHint {
+    0%, 100% { transform: translateX(1.4px); opacity: 0.75; }
+    50%      { transform: translateX(0.4px); opacity: 1; }
+  }
+  /* hover 时 blocked 卡片上抖动加剧 */
+  .decision-card:hover .tally[data-state="blocked"] {
+    animation: blockedShakeStrong 0.6s ease-in-out infinite;
+  }
+  @keyframes blockedShakeStrong {
+    0%, 100% { transform: translateX(0); }
+    25%      { transform: translateX(-1.2px); }
+    75%      { transform: translateX(1.2px); }
+  }
+
+  /* 虎符 hover 提示 */
+  .tally-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .tally-wrap[data-tip]:hover::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--text);
+    color: white;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: var(--r-sm);
+    white-space: nowrap;
+    z-index: 40;
+    box-shadow: var(--shadow-md);
+    pointer-events: none;
+  }
+
+  /* =========================================================
+     Top bar
+     ========================================================= */
+  .topbar {
+    display: flex;
+    align-items: center;
+    padding: 0 18px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-elev);
+    gap: 18px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 168px;
+  }
+  .brand-logo {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--tally), var(--tally-2));
+    display: grid;
+    place-items: center;
+    color: white;
+    box-shadow: 0 1px 2px rgba(90,79,207,0.25);
+  }
+  .brand-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.1;
+  }
+  .brand-name {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .brand-sub {
+    color: var(--text-faint);
+    font-size: 10.5px;
+    font-weight: 400;
+    margin-top: 1px;
+  }
+
+  /* Agent team — avatar-only stack（Tally 助理在最前 + 突出） */
+  .team {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 4px;
+    margin-left: 4px;
+  }
+  .team-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-right: 6px;
+  }
+  /* Avatar-only stack 容器 */
+  .team-stack {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .team-av {
+    position: relative;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    color: white;
+    display: grid; place-items: center;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: var(--mono);
+    cursor: pointer;
+    transition: transform 140ms ease, box-shadow 140ms ease;
+    border: 2px solid var(--bg-elev);
+    box-shadow: 0 0 0 1px var(--border);
+  }
+  .team-av:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 0 0 1px var(--border-strong), var(--shadow-md);
+    z-index: 5;
+  }
+  .team-av.pat   { background: var(--agent-pat); }
+  .team-av.quinn { background: var(--agent-quinn); }
+  .team-av.sage  { background: var(--agent-sage); }
+  .team-av.ren   { background: var(--agent-ren); }
+
+  /* Tally 突出：略大 + 紫色 ring */
+  .team-av.tally-self {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--tally), var(--tally-2));
+    box-shadow: 0 0 0 2px var(--tally), 0 1px 4px rgba(90,79,207,0.28);
+    border-color: var(--bg-elev);
+  }
+  .team-av.tally-self:hover {
+    box-shadow: 0 0 0 2px var(--tally-hover), var(--shadow-md);
+  }
+
+  /* 状态点（右下角 pulse） */
+  .team-av::after {
+    content: '';
+    position: absolute;
+    bottom: -1px; right: -2px;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: var(--ok);
+    border: 2px solid var(--bg-elev);
+  }
+  .team-av.working::after {
+    background: var(--tally);
+    animation: pulse-soft 1.8s ease-in-out infinite;
+  }
+  .team-av.waiting::after {
+    background: var(--warn);
+    animation: pulse-attn 1.6s ease-in-out infinite;
+  }
+  .team-av.idle::after { background: var(--text-faint); }
+  .team-av.tally-self::after { display: none; }
+
+  /* Tooltip — name / role / task 三行 */
+  .team-av[data-tip]:hover::before {
+    content: attr(data-tip);
+    position: absolute;
+    top: calc(100% + 9px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--text);
+    color: white;
+    font-size: 11.5px;
+    line-height: 1.5;
+    padding: 7px 11px;
+    border-radius: var(--r-sm);
+    white-space: pre-line;
+    z-index: 40;
+    box-shadow: var(--shadow-md);
+    pointer-events: none;
+    min-width: 140px;
+    text-align: left;
+    font-family: var(--font);
+    letter-spacing: 0;
+    text-transform: none;
+    font-weight: 400;
+  }
+  .agent-chip {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 10px 4px 4px;
+    border-radius: 999px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 120ms ease;
+    position: relative;
+  }
+  .agent-chip:hover {
+    background: var(--bg-sunken);
+    border-color: var(--border-strong);
+  }
+  .agent-chip.waiting {
+    border-color: var(--warn-border);
+    background: var(--warn-soft);
+  }
+  .agent-chip.waiting:hover { background: #fce9cc; }
+
+  /* Tally 助理胶囊 — 略大、专属边框、化身为合上的虎符 */
+  .agent-chip.tally-self {
+    padding: 4px 12px 4px 5px;
+    background: linear-gradient(135deg, #ffffff, var(--tally-soft));
+    border: 1px solid var(--tally);
+    box-shadow: 0 1px 3px rgba(90,79,207,0.12);
+  }
+  .agent-chip.tally-self:hover {
+    background: linear-gradient(135deg, #ffffff, #ddd6ff);
+  }
+  .agent-chip.tally-self .agent-av {
+    width: 24px; height: 24px;
+    background: linear-gradient(135deg, var(--tally), var(--tally-2));
+    display: grid;
+    place-items: center;
+  }
+  .agent-chip.tally-self .agent-name {
+    color: var(--tally-hover);
+    font-weight: 600;
+  }
+  .agent-chip.tally-self .agent-task {
+    color: var(--tally);
+    font-weight: 500;
+  }
+
+  /* 分隔线：Tally 与专业 Agent 之间 */
+  .team-divider {
+    width: 1px;
+    height: 22px;
+    background: var(--border);
+    margin: 0 4px;
+  }
+
+  .agent-av {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    color: white;
+    display: grid; place-items: center;
+    font-size: 10px;
+    font-weight: 700;
+    position: relative;
+    font-family: var(--mono);
+  }
+  .agent-av.pat   { background: var(--agent-pat); }
+  .agent-av.quinn { background: var(--agent-quinn); }
+  .agent-av.sage  { background: var(--agent-sage); }
+  .agent-av.ren   { background: var(--agent-ren); }
+  .agent-av::after {
+    content: '';
+    position: absolute;
+    bottom: -1px; right: -2px;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--ok);
+    border: 2px solid var(--bg-elev);
+  }
+  .agent-chip.waiting .agent-av::after {
+    background: var(--warn);
+    animation: pulse-attn 1.6s ease-in-out infinite;
+  }
+  .agent-chip.working .agent-av::after {
+    background: var(--tally);
+    animation: pulse-soft 1.8s ease-in-out infinite;
+  }
+  .agent-chip.idle .agent-av::after { background: var(--text-faint); }
+  .agent-chip.tally-self .agent-av::after { display: none; }
+
+  @keyframes pulse-soft {
+    0%, 100% { opacity: 0.55; transform: scale(0.92); }
+    50%      { opacity: 1;    transform: scale(1.12); }
+  }
+  @keyframes pulse-attn {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(184,101,31,0.45); transform: scale(1); }
+    50%      { box-shadow: 0 0 0 5px rgba(184,101,31,0); transform: scale(1.08); }
+  }
+
+  .agent-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.15;
+  }
+  .agent-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .agent-task {
+    font-size: 10.5px;
+    color: var(--text-faint);
+    max-width: 140px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .agent-chip.waiting .agent-task { color: var(--warn); font-weight: 500; }
+
+  .topbar-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .kchip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px 5px 10px;
+    border-radius: var(--r-sm);
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 12px;
+    transition: all 120ms ease;
+    cursor: pointer;
+  }
+  .kchip:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+    border-color: var(--border-strong);
+  }
+  .kchip .kbd {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text-muted);
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  .icon-btn {
+    border: 1px solid var(--border);
+    background: var(--bg-elev);
+    border-radius: var(--r-sm);
+    width: 30px; height: 30px;
+    display: grid; place-items: center;
+    color: var(--text-muted);
+    transition: all 120ms ease;
+    position: relative;
+  }
+  .icon-btn:hover { background: var(--bg-hover); color: var(--text); }
+  .icon-btn .quiet-dot {
+    position: absolute;
+    top: 5px; right: 5px;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--warn);
+    border: 1.5px solid var(--bg-elev);
+  }
+  .icon-btn[data-tooltip]:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    background: var(--text);
+    color: white;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: var(--r-sm);
+    white-space: nowrap;
+    z-index: 30;
+    box-shadow: var(--shadow-md);
+  }
+  .avatar-me {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #4a3fb8, #8e85e8);
+    color: white;
+    display: grid; place-items: center;
+    font-size: 12px; font-weight: 600;
+  }
+
+  /* =========================================================
+     Topic Tabs — 议题分组容器（虎符过滤维度，非聊天空间）
+     - 高度 42px，紧贴顶栏下方
+     - 当前 tab 用 2px 实线下划线（品牌色）
+     - 数字徽标用浅灰小 chip（不用红点）
+     - 严禁出现：成员列表 / 聊天入口 / 未读红点
+     ========================================================= */
+  .topic-bar {
+    display: flex;
+    align-items: stretch;
+    padding: 0 18px;
+    background: var(--bg-elev);
+    border-bottom: 1px solid var(--border);
+    gap: 2px;
+    overflow: hidden;
+    position: relative;
+    z-index: 5;
+  }
+  .topic-bar-label {
+    display: inline-flex;
+    align-items: center;
+    color: var(--text-faint);
+    font-size: 11px;
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-right: 8px;
+    user-select: none;
+  }
+  .topic-tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    height: 100%;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 12.5px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: color 120ms ease, background 120ms ease;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    line-height: 1;
+  }
+  .topic-tab:hover {
+    color: var(--text);
+    border-bottom-color: var(--border-strong);
+  }
+  .topic-tab .tt-icon {
+    font-size: 13px;
+    line-height: 1;
+    display: inline-block;
+  }
+  .topic-tab .tt-name {
+    font-weight: 500;
+  }
+  .topic-tab .tt-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 16px;
+    padding: 0 5px;
+    background: var(--bg-sunken);
+    color: var(--text-muted);
+    font-size: 10.5px;
+    font-family: var(--mono);
+    font-weight: 600;
+    border-radius: 999px;
+    line-height: 1;
+  }
+  .topic-tab.active {
+    color: var(--text);
+    background: linear-gradient(180deg, transparent, rgba(90,79,207,0.04));
+    border-bottom-color: var(--tally);
+  }
+  .topic-tab.active .tt-name { font-weight: 600; }
+  .topic-tab.active .tt-count {
+    background: var(--tally-soft);
+    color: var(--tally-hover);
+  }
+  /* "全部" tab — 默认更突出一点 */
+  .topic-tab.all .tt-icon { opacity: 0.7; }
+
+  .topic-bar-right {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: stretch;
+    gap: 2px;
+  }
+  .topic-more,
+  .topic-new {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 10px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: color 120ms ease, background 120ms ease;
+    line-height: 1;
+    border-bottom: 2px solid transparent;
+  }
+  .topic-more:hover,
+  .topic-new:hover {
+    color: var(--text);
+    background: var(--bg-sunken);
+  }
+  .topic-new {
+    color: var(--text-faint);
+  }
+  .topic-new:hover { color: var(--tally); }
+  .topic-more.open {
+    color: var(--text);
+    background: var(--bg-sunken);
+  }
+  .topic-more .chev {
+    font-size: 9px;
+    margin-left: 2px;
+    transition: transform 160ms ease;
+  }
+  .topic-more.open .chev { transform: rotate(180deg); }
+
+  /* "更多" 下拉 */
+  .topic-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 56px;
+    min-width: 280px;
+    margin-top: 4px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow-pop);
+    z-index: 60;
+    display: none;
+    overflow: hidden;
+  }
+  .topic-dropdown.open { display: block; animation: popIn 160ms ease; }
+  .topic-dd-list {
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 4px;
+  }
+  .topic-dd-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 9px;
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    transition: background 120ms ease;
+  }
+  .topic-dd-item:hover { background: var(--bg-hover); }
+  .topic-dd-item.active { background: var(--tally-soft); }
+  .topic-dd-item .dd-icon {
+    font-size: 13px;
+    width: 16px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .topic-dd-item .dd-name {
+    flex: 1;
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.3;
+  }
+  .topic-dd-item .dd-type {
+    font-size: 10.5px;
+    color: var(--text-faint);
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-right: 4px;
+  }
+  .topic-dd-item .dd-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 16px;
+    padding: 0 5px;
+    background: var(--bg-sunken);
+    color: var(--text-muted);
+    font-size: 10.5px;
+    font-family: var(--mono);
+    font-weight: 600;
+    border-radius: 999px;
+    line-height: 1;
+  }
+  .topic-dd-search {
+    border-top: 1px solid var(--border);
+    padding: 8px 10px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: var(--bg-sunken);
+  }
+  .topic-dd-search input {
+    flex: 1;
+    border: 1px solid var(--border);
+    background: var(--bg-elev);
+    border-radius: var(--r-sm);
+    padding: 5px 8px;
+    font-size: 12px;
+    font-family: inherit;
+    color: var(--text);
+    outline: none;
+  }
+  .topic-dd-search input:focus { border-color: var(--border-focus); }
+  .topic-dd-search input::placeholder { color: var(--text-faint); }
+
+  /* "+ 新建" 浮层 */
+  .topic-create-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(20,20,18,0.32);
+    z-index: 100;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  .topic-create-modal.open { display: flex; animation: popIn 180ms ease; }
+  .topic-create-card {
+    width: 420px;
+    background: var(--bg-elev);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-pop);
+    overflow: hidden;
+  }
+  .tcc-head {
+    padding: 16px 20px 8px;
+  }
+  .tcc-head h3 {
+    margin: 0 0 4px;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .tcc-head p {
+    margin: 0;
+    color: var(--text-faint);
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .tcc-body {
+    padding: 14px 20px 16px;
+  }
+  .tcc-label {
+    font-size: 11px;
+    color: var(--text-faint);
+    font-family: var(--mono);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 7px;
+  }
+  .tcc-types {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .tcc-type {
+    flex: 1;
+    border: 1px solid var(--border);
+    background: var(--bg-elev);
+    color: var(--text-muted);
+    border-radius: var(--r-sm);
+    padding: 8px 6px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 120ms ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    line-height: 1.2;
+  }
+  .tcc-type .tcc-type-icon { font-size: 16px; }
+  .tcc-type:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-strong);
+    color: var(--text);
+  }
+  .tcc-type.active {
+    border-color: var(--tally);
+    background: var(--tally-soft);
+    color: var(--tally-hover);
+    font-weight: 600;
+  }
+  .tcc-input {
+    width: 100%;
+    border: 1px solid var(--border);
+    background: var(--bg-elev);
+    border-radius: var(--r-sm);
+    padding: 9px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--text);
+    outline: none;
+    box-sizing: border-box;
+  }
+  .tcc-input:focus { border-color: var(--border-focus); }
+  .tcc-foot {
+    padding: 12px 20px 16px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-sunken);
+  }
+  .tcc-btn {
+    border: 1px solid var(--border);
+    background: var(--bg-elev);
+    color: var(--text);
+    border-radius: var(--r-sm);
+    padding: 7px 14px;
+    font-size: 12.5px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 120ms ease;
+  }
+  .tcc-btn:hover { background: var(--bg-hover); }
+  .tcc-btn.primary {
+    background: var(--tally);
+    color: white;
+    border-color: var(--tally);
+  }
+  .tcc-btn.primary:hover { background: var(--tally-hover); }
+
+  /* 主区根据 Topic 切换的 fade 过渡 */
+  .main-inner {
+    transition: opacity 220ms ease;
+  }
+  .main-inner.topic-fading { opacity: 0.35; }
+
+  /* 主区顶部"显示议题"指示字（默认隐藏，切换非"全部"时显现） */
+  .topic-indicator {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    margin: -4px 0 14px;
+    padding: 7px 12px;
+    background: var(--tally-soft);
+    border: 1px solid rgba(90,79,207,0.18);
+    border-radius: var(--r-sm);
+    color: var(--tally-hover);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .topic-indicator.visible { display: inline-flex; }
+  .topic-indicator .ti-icon { font-size: 13px; }
+  .topic-indicator .ti-name { font-weight: 600; }
+  .topic-indicator .ti-count {
+    color: var(--tally);
+    font-family: var(--mono);
+    font-size: 11px;
+    opacity: 0.8;
+  }
+  .topic-indicator .ti-clear {
+    margin-left: auto;
+    border: none;
+    background: transparent;
+    color: var(--tally);
+    font-size: 11px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: inherit;
+  }
+  .topic-indicator .ti-clear:hover { background: rgba(90,79,207,0.12); }
+
+  /* =========================================================
+     Layout
+     ========================================================= */
+  .body {
+    display: grid;
+    grid-template-columns: 264px 1fr;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* =========================================================
+     Sidebar — "我发出的虎符" / "我接到的虎符"
+     ========================================================= */
+  .sidebar {
+    border-right: 1px solid var(--border);
+    background: var(--bg-elev);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .sidebar-header {
+    padding: 14px 14px 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .sidebar-header h3 {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+  .new-tally-btn {
+    border: 1px solid var(--border);
+    background: var(--bg-elev);
+    border-radius: var(--r-sm);
+    padding: 3px 8px;
+    font-size: 11px;
+    color: var(--text-muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 120ms ease;
+  }
+  .new-tally-btn:hover {
+    background: var(--tally-soft);
+    color: var(--tally);
+    border-color: rgba(90,79,207,0.25);
+  }
+
+  .sb-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 8px 12px;
+  }
+  /* 大分组：发出 / 接到 */
+  .sb-section-head {
+    padding: 14px 10px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.005em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .sb-section-head .head-tally {
+    color: var(--text-faint);
+  }
+  .sb-section-head + .sb-section-hint {
+    padding: 0 10px 6px;
+    font-size: 11px;
+    color: var(--text-faint);
+    margin-top: -2px;
+  }
+
+  .tally-group { padding-top: 6px; }
+  .tally-group-label {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-faint);
+    padding: 8px 8px 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .tally-group-label .count {
+    background: var(--bg-sunken);
+    border-radius: 999px;
+    padding: 1px 7px;
+    font-size: 10px;
+    color: var(--text-muted);
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+  .tally-group-label.pending .count { background: var(--warn-soft); color: var(--warn); }
+  .tally-group-label.blocked .count { background: var(--danger-soft); color: var(--danger); }
+  .tally-group-label.sealed  { color: var(--text-faint); }
+  .tally-group-label.sealed .toggle-mini {
+    margin-left: auto;
+    color: var(--text-faint);
+    cursor: pointer;
+    font-size: 10px;
+    padding: 2px 5px;
+    border-radius: 4px;
+  }
+  .tally-group-label.sealed .toggle-mini:hover {
+    background: var(--bg-hover);
+    color: var(--text-muted);
+  }
+
+  .tally-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 9px 10px;
+    border-radius: var(--r-md);
+    cursor: pointer;
+    transition: background 120ms ease;
+    margin-bottom: 2px;
+    position: relative;
+    border-left: 2px solid transparent;
+  }
+  .tally-item:hover { background: var(--bg-hover); }
+  .tally-item.pending {
+    background: linear-gradient(to right, rgba(184,101,31,0.045), transparent 60%);
+    border-left-color: var(--warn);
+  }
+  .tally-item.blocked {
+    background: linear-gradient(to right, rgba(184,52,74,0.045), transparent 60%);
+    border-left-color: var(--danger);
+  }
+  .tally-item .tally-icon-cell {
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .tally-meta {
+    flex: 1;
+    min-width: 0;
+  }
+  .tally-id {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text-faint);
+    margin-right: 6px;
+  }
+  .tally-title {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+  }
+  .tally-item.sealed .tally-title { color: var(--text-muted); font-weight: 400; }
+  .tally-sub {
+    font-size: 11px;
+    color: var(--text-faint);
+    margin-top: 3px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .tally-sub .recipient-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .tally-sub .recipient-dot.pat   { background: var(--agent-pat); }
+  .tally-sub .recipient-dot.quinn { background: var(--agent-quinn); }
+  .tally-sub .recipient-dot.sage  { background: var(--agent-sage); }
+  .tally-sub .recipient-dot.ren   { background: var(--agent-ren); }
+  .tally-sub .recipient-dot.human { background: var(--text-muted); }
+  .tally-sub .stuck-tag { color: var(--danger); font-weight: 500; }
+  .tally-sub .wait-tag  { color: var(--warn); font-weight: 500; }
+
+  .sealed-list { display: none; padding: 0 0 4px; }
+  .sealed-list.open { display: block; }
+
+  /* =========================================================
+     Sidebar — 我的文档（Artifact 入口）
+     与虎符分组同源：复用 .sb-section-head / .tally-group-label / .count
+     视觉差异点：
+       - 行更紧凑（无 tally SVG，无副标题）
+       - 无红色徽标；count 一律用浅灰 chip（沉默是默认）
+       - 缩进与子项 padding 与 .tally-item 对齐
+     ========================================================= */
+  .sb-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 14px 10px 4px;
+    opacity: 0.7;
+  }
+  .sb-section-head .head-count {
+    background: var(--bg-sunken);
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 10px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    margin-left: 4px;
+    letter-spacing: 0;
+  }
+  .doc-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px 7px 14px;
+    border-radius: var(--r-md);
+    cursor: pointer;
+    transition: background 120ms ease;
+    margin-bottom: 1px;
+    font-size: 12.5px;
+    color: var(--text);
+    line-height: 1.4;
+  }
+  .doc-item:hover { background: var(--bg-hover); }
+  .doc-item .doc-label {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .doc-item .doc-count {
+    background: var(--bg-sunken);
+    border-radius: 999px;
+    padding: 1px 7px;
+    font-size: 10px;
+    color: var(--text-muted);
+    font-weight: 600;
+    letter-spacing: 0;
+    flex-shrink: 0;
+  }
+  /* "按议题归类 ▾" 折叠开关行 */
+  .doc-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px 7px 14px;
+    border-radius: var(--r-md);
+    cursor: pointer;
+    transition: background 120ms ease;
+    margin-bottom: 1px;
+    font-size: 12.5px;
+    color: var(--text-muted);
+    line-height: 1.4;
+    user-select: none;
+  }
+  .doc-toggle:hover { background: var(--bg-hover); color: var(--text); }
+  .doc-toggle .doc-toggle-caret {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--text-faint);
+    transition: transform 120ms ease;
+    display: inline-block;
+  }
+  .doc-toggle.open .doc-toggle-caret { transform: rotate(180deg); }
+  .doc-by-topic {
+    display: none;
+    padding: 2px 0 2px 10px;
+    margin-left: 4px;
+    border-left: 1px dashed var(--border);
+  }
+  .doc-by-topic.open { display: block; }
+  .doc-by-topic .doc-item {
+    padding: 5px 8px 5px 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .doc-by-topic .doc-item:hover { color: var(--text); }
+  .doc-by-topic .doc-item .doc-topic-icon {
+    width: 14px;
+    text-align: center;
+    flex-shrink: 0;
+    font-size: 11px;
+    opacity: 0.85;
+  }
+
+  /* =========================================================
+     Main — Tally 助理早间汇报 + 虎符墙
+     ========================================================= */
+  .main {
+    overflow-y: auto;
+    position: relative;
+    padding: 24px 32px 80px;
+  }
+  .main-inner {
+    max-width: 880px;
+    margin: 0 auto;
+  }
+
+  /* ----- 顶部入门引导卡（新用户教育，超过 10h 自动隐藏） ----- */
+  .onboarding {
+    background: linear-gradient(180deg, #fdfcfa, var(--bg-elev));
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--tally);
+    border-radius: var(--r-lg);
+    padding: 16px 18px 14px;
+    margin-bottom: 18px;
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    position: relative;
+  }
+  .onboarding.hidden { display: none; }
+  .onb-demo {
+    width: 56px; height: 56px;
+    border-radius: var(--r-md);
+    background: var(--bg-sunken);
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    color: var(--tally);
+  }
+  /* 演示虎符循环：分开 → 合拢 → 分开（3.6s） */
+  .onb-demo .tally .tally-left  { animation: demoLeft  3.6s ease-in-out infinite; }
+  .onb-demo .tally .tally-right { animation: demoRight 3.6s ease-in-out infinite; }
+  @keyframes demoLeft {
+    0%, 18%   { transform: translateX(-2.4px); }
+    45%, 60%  { transform: translateX(0); }
+    87%, 100% { transform: translateX(-2.4px); }
+  }
+  @keyframes demoRight {
+    0%, 18%   { transform: translateX(2.4px); }
+    45%, 60%  { transform: translateX(0); }
+    87%, 100% { transform: translateX(2.4px); }
+  }
+  /* 演示虎符在合拢瞬间「点亮」墨金 */
+  .onb-demo .tally .t-face,
+  .onb-demo .tally .t-ear {
+    animation: demoFill 3.6s ease-in-out infinite;
+  }
+  .onb-demo .tally .t-eye,
+  .onb-demo .tally .t-mark {
+    animation: demoEye 3.6s ease-in-out infinite;
+  }
+  @keyframes demoFill {
+    0%, 25%   { fill: none; stroke: var(--tally); }
+    45%, 60%  { fill: var(--seal-gold); stroke: var(--seal-gold); }
+    80%, 100% { fill: none; stroke: var(--tally); }
+  }
+  @keyframes demoEye {
+    0%, 25%   { fill: var(--tally); stroke: var(--tally); }
+    45%, 60%  { fill: var(--seal-gold-soft); stroke: var(--seal-gold-soft); }
+    80%, 100% { fill: var(--tally); stroke: var(--tally); }
+  }
+  .onb-content { flex: 1; min-width: 0; }
+  .onb-title {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .onb-title .onb-tally-tag {
+    color: var(--tally);
+    font-weight: 600;
+  }
+  .onb-lines {
+    font-size: 12.5px;
+    color: var(--text-muted);
+    line-height: 1.65;
+  }
+  .onb-lines .onb-em {
+    color: var(--text);
+    font-weight: 500;
+  }
+  .onb-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .onb-btn {
+    border: 1px solid var(--border);
+    background: var(--bg-elev);
+    color: var(--text);
+    border-radius: var(--r-sm);
+    padding: 4px 10px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 120ms ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .onb-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-strong);
+  }
+  .onb-btn.primary {
+    background: var(--tally-soft);
+    color: var(--tally-hover);
+    border-color: rgba(90,79,207,0.2);
+  }
+  .onb-btn.primary:hover {
+    background: #ddd6ff;
+  }
+  .onb-close {
+    position: absolute;
+    top: 10px; right: 10px;
+    border: none;
+    background: transparent;
+    color: var(--text-faint);
+    width: 22px; height: 22px;
+    border-radius: 4px;
+    display: grid; place-items: center;
+    cursor: pointer;
+    transition: all 120ms ease;
+  }
+  .onb-close:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+  .onb-dev {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--border);
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text-faint);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .onb-dev-link {
+    color: var(--text-faint);
+    text-decoration: underline dotted;
+    cursor: pointer;
+    background: none;
+    border: none;
+    font-family: inherit;
+    font-size: inherit;
+    padding: 0;
+  }
+  .onb-dev-link:hover { color: var(--tally); }
+
+  /* =========================================================
+     早间汇报 Banner — 紧凑横条，置于 Topic Tab 上方
+     ========================================================= */
+  .brief-banner {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 0 18px;
+    height: 52px;
+    background: linear-gradient(180deg, #fbfaf7, var(--bg-elev));
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+  .brief-banner::before {
+    content: '';
+    position: absolute;
+    top: 0; right: 0;
+    width: 220px; height: 100%;
+    background: radial-gradient(ellipse at right center, rgba(90,79,207,0.05), transparent 70%);
+    pointer-events: none;
+  }
+  .brief-banner-av {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--tally), var(--tally-2));
+    display: grid; place-items: center;
+    flex-shrink: 0;
+    box-shadow: 0 1px 3px rgba(90,79,207,0.22);
+  }
+  .brief-banner-av .tally { color: white; }
+  .brief-banner-av .tally .t-face,
+  .brief-banner-av .tally .t-ear { stroke: white; fill: white; }
+  .brief-banner-av .tally .t-mark { stroke: var(--tally); stroke-width: 1.4; }
+  .brief-banner-av .tally .t-eye  { fill: var(--tally); }
+  .brief-banner-av .tally .t-glow { opacity: 0; }
+
+  .brief-banner-greet {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.2;
+    flex-shrink: 0;
+    min-width: 0;
+  }
+  .brief-banner-greet .bbg-main {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.005em;
+  }
+  .brief-banner-greet .bbg-sub {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text-faint);
+    letter-spacing: 0.04em;
+    margin-top: 2px;
+  }
+
+  .brief-banner-sep {
+    width: 1px;
+    height: 26px;
+    background: var(--border);
+    flex-shrink: 0;
+  }
+
+  .brief-banner-stats {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .brief-banner-stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px 4px 8px;
+    background: var(--bg-sunken);
+    border-radius: 999px;
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    line-height: 1;
+    border: 1px solid transparent;
+  }
+  .brief-banner-stat .bbs-icon {
+    font-size: 11px;
+    line-height: 1;
+    font-family: var(--mono);
+    font-weight: 600;
+  }
+  .brief-banner-stat .bbs-num {
+    font-weight: 600;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .brief-banner-stat.neutral .bbs-icon { color: var(--text-muted); }
+  .brief-banner-stat.sealed {
+    background: var(--seal-gold-soft);
+    color: #8a6720;
+  }
+  .brief-banner-stat.sealed .bbs-num { color: #6e5118; }
+  .brief-banner-stat.sealed .bbs-icon { color: var(--seal-gold); }
+  .brief-banner-stat.working {
+    background: rgba(90,79,207,0.08);
+    color: var(--tally-hover);
+  }
+  .brief-banner-stat.working .bbs-num { color: var(--tally-hover); }
+  .brief-banner-stat.working .bbs-icon { color: var(--tally); }
+  .brief-banner-stat.pending {
+    background: var(--warn-soft);
+    color: var(--warn);
+    border-color: rgba(184,101,31,0.18);
+    animation: bannerPulse 2.2s ease-in-out infinite;
+  }
+  .brief-banner-stat.pending .bbs-num { color: var(--warn); }
+  .brief-banner-stat.pending .bbs-icon { color: var(--warn); }
+  @keyframes bannerPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(184,101,31,0.0); }
+    50%      { box-shadow: 0 0 0 3px rgba(184,101,31,0.10); }
+  }
+
+  .brief-banner-toggle {
+    margin-left: auto;
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+    background: var(--bg-elev);
+    color: var(--text-muted);
+    border-radius: var(--r-sm);
+    padding: 5px 10px 5px 11px;
+    font-size: 11.5px;
+    font-family: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    line-height: 1;
+    transition: all 120ms ease;
+    position: relative;
+    z-index: 2;
+  }
+  .brief-banner-toggle:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+    border-color: var(--border-strong);
+  }
+  .brief-banner-toggle .chev {
+    font-size: 9px;
+    transition: transform 200ms ease;
+  }
+  .brief-banner.open .brief-banner-toggle .chev { transform: rotate(180deg); }
+
+  /* 展开区：banner 正下方平滑展开详细卡 */
+  .brief-banner-expand {
+    grid-row: 2 / 3; /* 与 banner 同行的位置——但用绝对覆盖容器 */
+  }
+  .brief-expand {
+    background: var(--bg-elev);
+    border-bottom: 1px solid var(--border);
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 280ms ease;
+  }
+  .brief-expand.open { max-height: 280px; }
+  .brief-expand-inner {
+    padding: 14px 18px 16px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 18px;
+    background: var(--bg-sunken);
+    border-top: 1px dashed var(--border);
+  }
+  .brief-ask {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    line-height: 1.5;
+    padding: 10px 12px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    font-size: 12.5px;
+  }
+  .brief-ask .ask-label {
+    font-size: 10.5px;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-family: var(--mono);
+    margin-bottom: 3px;
+  }
+  .brief-ask .ask-body { color: var(--text); font-size: 12.5px; line-height: 1.55; }
+  .brief-ask .ask-body b { font-weight: 600; }
+  .brief-ask .ask-body em {
+    font-style: normal;
+    color: var(--danger);
+    font-weight: 500;
+  }
+  .brief-ask .ask-tally { flex-shrink: 0; margin-top: 2px; }
+
+  /* ----- Section heading ----- */
+  .section { margin-bottom: 32px; }
+  .sec-h {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 10px 0 14px;
+  }
+  .sec-h-tally {
+    width: 18px; height: 18px;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+  }
+  .sec-h h2 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .sec-h .sec-count {
+    color: var(--text-faint);
+    font-weight: 500;
+    font-size: 14px;
+  }
+  .sec-h .sec-desc {
+    color: var(--text-faint);
+    font-size: 12px;
+    margin-left: auto;
+    font-style: italic;
+  }
+
+  /* =========================================================
+     虎符墙 — 决策卡片
+     ========================================================= */
+  .decision-card {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 18px 22px 16px;
+    margin-bottom: 14px;
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow 160ms ease, transform 160ms ease, border-color 160ms ease;
+    position: relative;
+  }
+  .decision-card:hover {
+    box-shadow: var(--shadow-md);
+  }
+  .decision-card.pending { border-left: 3px solid var(--warn); }
+  .decision-card.blocked { border-left: 3px solid var(--danger); }
+
+  .dc-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    margin-bottom: 10px;
+  }
+  .dc-tally-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+    padding-top: 2px;
+  }
+  .dc-id {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text-faint);
+    letter-spacing: 0.02em;
+    padding: 1px 6px;
+    background: var(--bg-sunken);
+    border-radius: 4px;
+  }
+  .dc-title { flex: 1; min-width: 0; }
+  .dc-title h3 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    line-height: 1.4;
+  }
+  .dc-title h3 .amount {
+    font-family: var(--mono);
+    color: var(--danger);
+    background: var(--danger-soft);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-left: 2px;
+  }
+  .dc-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-faint);
+    font-size: 12px;
+    margin-top: 5px;
+    flex-wrap: wrap;
+  }
+  .dc-meta .meta-sep { color: var(--text-faint); opacity: 0.5; }
+  .dc-meta .recipient {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+  .dc-meta .recipient .rec-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+  }
+  .dc-meta .recipient .rec-dot.pat   { background: var(--agent-pat); }
+  .dc-meta .recipient .rec-dot.quinn { background: var(--agent-quinn); }
+  .dc-meta .recipient .rec-dot.sage  { background: var(--agent-sage); }
+  .dc-meta .recipient .rec-dot.ren   { background: var(--agent-ren); }
+  .dc-meta .recipient .rec-dot.human { background: var(--text-muted); }
+  .dc-meta .wait-tag {
+    color: var(--warn);
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .dc-meta .wait-tag::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--warn);
+    animation: pulse-soft 1.8s infinite;
+  }
+  .dc-meta .stuck-tag {
+    color: var(--danger);
+    font-weight: 500;
+  }
+
+  .dc-rows {
+    display: grid;
+    grid-template-columns: 60px 1fr;
+    gap: 6px 14px;
+    margin: 12px 0;
+    padding: 12px 14px;
+    background: var(--bg-sunken);
+    border-radius: var(--r-md);
+    font-size: 12.5px;
+  }
+  .dc-rows .k {
+    color: var(--text-faint);
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding-top: 1px;
+    font-family: var(--mono);
+  }
+  .dc-rows .v { color: var(--text); line-height: 1.55; }
+  .dc-rows .v.warn { color: var(--warn); font-weight: 500; }
+  .dc-rows .v.danger { color: var(--danger); font-weight: 500; }
+  .dc-rows .v .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-right: 4px;
+  }
+  .dc-rows .v .chip.ok    { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+  .dc-rows .v .chip.warn  { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+  .dc-rows .v .chip.info  { background: var(--info-soft); color: var(--info); border-color: transparent; }
+
+  .dc-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+  }
+  .btn {
+    border: 1px solid var(--border);
+    background: var(--bg-elev);
+    color: var(--text);
+    border-radius: var(--r-sm);
+    padding: 7px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 120ms ease;
+  }
+  .btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-strong);
+  }
+  .btn.primary {
+    background: var(--text);
+    color: white;
+    border-color: var(--text);
+  }
+  .btn.primary:hover {
+    background: #000;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(20,20,18,0.18);
+  }
+  .btn.danger { color: var(--danger); }
+  .btn.danger:hover {
+    background: var(--danger-soft);
+    border-color: var(--danger);
+  }
+  .btn.ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-muted);
+  }
+  .btn.ghost:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+  .btn .ico { font-size: 13px; line-height: 1; }
+  .dc-actions .spacer { flex: 1; }
+  .dc-actions .actions-note {
+    color: var(--text-faint);
+    font-size: 11px;
+    font-family: var(--mono);
+  }
+
+  /* "卡住"卡的"催办" 按钮 */
+  .btn.urge {
+    color: var(--danger);
+    border-color: var(--danger-soft);
+    background: var(--danger-soft);
+  }
+  .btn.urge:hover {
+    background: #f7d5dc;
+    border-color: var(--danger);
+  }
+
+  /* =========================================================
+     昨天闭合的虎符 — 折叠列表（合一的归档）
+     ========================================================= */
+  .sealed-box {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+  }
+  .sealed-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    cursor: pointer;
+    transition: background 120ms ease;
+  }
+  .sealed-head:hover { background: var(--bg-sunken); }
+  .sealed-head .chev {
+    color: var(--text-faint);
+    transition: transform 200ms ease;
+    font-size: 11px;
+    width: 12px;
+  }
+  .sealed-box.open .sealed-head .chev { transform: rotate(90deg); }
+  .sealed-head .sh-title {
+    font-size: 13px;
+    color: var(--text);
+    font-weight: 500;
+  }
+  .sealed-head .sh-sub {
+    color: var(--text-faint);
+    font-size: 12px;
+    margin-left: auto;
+    font-family: var(--mono);
+  }
+  .sealed-list-wrap {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 280ms ease;
+  }
+  .sealed-box.open .sealed-list-wrap {
+    max-height: 700px;
+    border-top: 1px solid var(--border);
+  }
+  .sealed-row {
+    display: grid;
+    grid-template-columns: 24px 56px 22px 1fr auto;
+    gap: 12px;
+    align-items: center;
+    padding: 10px 18px;
+    border-bottom: 1px solid var(--border);
+    transition: background 120ms ease;
+  }
+  .sealed-row:last-child { border-bottom: none; }
+  .sealed-row:hover { background: var(--bg-sunken); }
+  .sealed-row .sr-tally-cell {
+    display: grid; place-items: center;
+  }
+  .sealed-row .sr-id {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-faint);
+  }
+  .sealed-row .sr-agent {
+    width: 22px; height: 22px;
+    border-radius: 5px;
+    color: white;
+    display: grid; place-items: center;
+    font-size: 10px;
+    font-weight: 700;
+    font-family: var(--mono);
+  }
+  .sealed-row .sr-agent.pat   { background: var(--agent-pat); }
+  .sealed-row .sr-agent.quinn { background: var(--agent-quinn); }
+  .sealed-row .sr-agent.sage  { background: var(--agent-sage); }
+  .sealed-row .sr-agent.ren   { background: var(--agent-ren); }
+  .sealed-row .sr-text {
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.5;
+  }
+  .sealed-row .sr-text .muted { color: var(--text-faint); }
+  .sealed-row .sr-meta {
+    color: var(--text-faint);
+    font-size: 11.5px;
+    text-align: right;
+  }
+
+  /* =========================================================
+     CTA
+     ========================================================= */
+  .cta-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 28px 0 8px;
+    padding: 18px 22px;
+    background: var(--text);
+    color: white;
+    border-radius: var(--r-lg);
+    border: none;
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+  }
+  .cta-row .cta-text { font-size: 14px; font-weight: 500; }
+  .cta-row .cta-sub {
+    color: rgba(255,255,255,0.6);
+    font-size: 12px;
+    margin-top: 3px;
+  }
+  .cta-row .cta-btn {
+    background: white;
+    color: var(--text);
+    border: none;
+    padding: 9px 16px;
+    border-radius: var(--r-sm);
+    font-size: 13px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 120ms ease;
+  }
+  .cta-row .cta-btn:hover {
+    background: var(--bg-sunken);
+    transform: translateY(-1px);
+  }
+
+  /* =========================================================
+     Floating private bubble (改写文案)
+     ========================================================= */
+  .qchat-bubble {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    z-index: 50;
+    background: #fff8e2;
+    border: 1px solid #f0e1a6;
+    color: #6b5310;
+    padding: 10px 14px;
+    border-radius: 999px;
+    font-size: 12.5px;
+    box-shadow: var(--shadow-md);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: all 160ms ease;
+    max-width: 380px;
+  }
+  .qchat-bubble:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+  }
+  .qchat-bubble .qb-icon { font-size: 14px; }
+  .qchat-bubble .kbd {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: #6b5310;
+    background: rgba(0,0,0,0.04);
+    border: 1px solid rgba(0,0,0,0.08);
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin: 0 2px;
+  }
+
+  .qchat-pop {
+    position: fixed;
+    right: 24px;
+    bottom: 80px;
+    z-index: 51;
+    width: 380px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-pop);
+    display: none;
+    overflow: hidden;
+  }
+  .qchat-pop.open { display: block; animation: popIn 180ms ease; }
+  @keyframes popIn {
+    from { opacity: 0; transform: translateY(8px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .qchat-pop-head {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .qchat-pop-head .qph-icon {
+    width: 22px; height: 22px;
+    border-radius: 5px;
+    background: linear-gradient(135deg, #f5d36a, #e8a73f);
+    display: grid; place-items: center;
+    color: white;
+    font-size: 12px;
+  }
+  .qchat-pop-head .qph-title { font-size: 13px; font-weight: 600; }
+  .qchat-pop-head .qph-sub {
+    color: var(--text-faint);
+    font-size: 11px;
+    margin-top: 1px;
+  }
+  .qchat-pop-head .close {
+    margin-left: auto;
+    border: none;
+    background: transparent;
+    color: var(--text-faint);
+    width: 22px; height: 22px;
+    border-radius: 4px;
+    display: grid; place-items: center;
+  }
+  .qchat-pop-head .close:hover {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+  .qchat-pop-body { padding: 12px 16px 14px; }
+  .qchat-pop-body .qpb-label {
+    font-size: 11px;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-family: var(--mono);
+    margin-bottom: 8px;
+  }
+  .qchat-recent {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 12px;
+  }
+  .qchat-recent .qrow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 8px;
+    border-radius: var(--r-sm);
+    cursor: pointer;
+    transition: background 120ms ease;
+  }
+  .qchat-recent .qrow:hover { background: var(--bg-hover); }
+  .qchat-recent .qrow .qr-av {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--bg-sunken);
+    border: 1px solid var(--border);
+    display: grid;
+    place-items: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+  .qchat-recent .qrow .qr-name { font-size: 13px; flex: 1; }
+  .qchat-recent .qrow .qr-time { color: var(--text-faint); font-size: 11px; }
+  .qchat-input {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--bg-sunken);
+    border-radius: var(--r-md);
+    border: 1px solid var(--border);
+  }
+  .qchat-input input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .qchat-input input::placeholder { color: var(--text-faint); }
+  .qchat-private-note {
+    margin-top: 10px;
+    padding: 8px 10px;
+    background: #fff8e2;
+    border: 1px dashed #f0e1a6;
+    border-radius: var(--r-sm);
+    color: #6b5310;
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  /* =========================================================
+     Footer tester guide
+     ========================================================= */
+  .tester {
+    max-width: 760px;
+    margin: 64px auto 0;
+    padding: 28px 32px 32px;
+    background: var(--bg-sunken);
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--r-lg);
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+  .tester-divider {
+    text-align: center;
+    color: var(--text-faint);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    margin-bottom: 14px;
+  }
+  .tester h4 {
+    margin: 0 0 8px;
+    font-size: 14px;
+    color: var(--text);
+    font-weight: 600;
+  }
+  .tester p { margin: 0 0 12px; line-height: 1.7; }
+  .tester ol { padding-left: 20px; margin: 12px 0 0; }
+  .tester ol li { margin-bottom: 10px; line-height: 1.65; }
+  .tester ol li strong { color: var(--text); font-weight: 600; }
+
+  /* =========================================================
+     Responsive
+     ========================================================= */
+  @media (max-width: 1240px) {
+    .team-stack { gap: 6px; }
+    .team-av { width: 28px; height: 28px; font-size: 11px; }
+    .team-av.tally-self { width: 32px; height: 32px; }
+  }
+  @media (max-width: 1024px) {
+    .body { grid-template-columns: 220px 1fr; }
+    .main { padding: 20px 22px 80px; }
+    .team-label { display: none; }
+    .brief-banner-stats { gap: 6px; }
+    .brief-banner-stat { padding: 3px 8px; font-size: 11.5px; }
+    .topic-bar-label { display: none; }
+    .topic-bar { padding: 0 12px; }
+    .topic-tab { padding: 0 9px; font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- =====================================================
+     可复用：虎符 SVG 模板（通过 JS 不必要，直接 inline）
+     基础 viewBox: 0 0 24 24
+     ===================================================== -->
+
+<div class="app">
+
+  <!-- ===================================================
+       Top bar
+       =================================================== -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-logo" title="Tally">
+        <!-- Logo: 合上的虎符 -->
+        <svg width="16" height="16" viewBox="0 0 24 24" class="tally" data-state="sealed"></svg>
+      </div>
+      <div class="brand-text">
+        <span class="brand-name">Tally</span>
+        <span class="brand-sub">你的执行助理</span>
+      </div>
+    </div>
+
+    <div class="team" aria-label="你的 Agent 团队">
+      <span class="team-label">Your team</span>
+      <div class="team-stack">
+        <div class="team-av tally-self" data-tip="Tally · 你的执行助理&#10;替你跟 8 枚虎符">
+          <svg width="18" height="18" viewBox="0 0 24 24" class="tally" data-state="sealed"></svg>
+        </div>
+        <div class="team-av pat working" data-tip="Pat · researcher&#10;正在调研竞品定价">P</div>
+        <div class="team-av quinn working" data-tip="Quinn · analyst&#10;矩阵分析中">Q</div>
+        <div class="team-av sage waiting" data-tip="Sage · writer&#10;等你拍板 · $4.20">S</div>
+        <div class="team-av ren idle" data-tip="Ren · critic&#10;休眠中">R</div>
+      </div>
+    </div>
+
+    <div class="topbar-right">
+      <button class="kchip" id="kchipBtn" aria-label="私密浮层">
+        <span>⌘K 私聊</span>
+        <span class="kbd">⌘ K</span>
+      </button>
+      <button class="icon-btn" data-tooltip="2 枚虎符等你拍板" aria-label="通知">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        <span class="quiet-dot"></span>
+      </button>
+      <div class="avatar-me" title="Ada">A</div>
+    </div>
+  </header>
+
+  <!-- ===================================================
+       早间汇报 Banner — 紧凑横条 + 可展开详细
+       =================================================== -->
+  <div class="brief-banner" id="briefBanner" aria-label="Tally 早间汇报">
+    <div class="brief-banner-av" title="Tally 助理">
+      <svg width="16" height="16" viewBox="0 0 24 24" class="tally" data-state="sealed"></svg>
+    </div>
+    <div class="brief-banner-greet">
+      <span class="bbg-main">早 Ada</span>
+      <span class="bbg-sub">5月24日 · 8:32 AM</span>
+    </div>
+    <div class="brief-banner-sep"></div>
+    <div class="brief-banner-stats">
+      <span class="brief-banner-stat neutral" title="昨夜累计发出 12 枚虎符">
+        <span class="bbs-icon">↑</span><span class="bbs-num">12</span>发出
+      </span>
+      <span class="brief-banner-stat sealed" title="8 枚已合一归档">
+        <span class="bbs-icon">✓</span><span class="bbs-num">8</span>闭合
+      </span>
+      <span class="brief-banner-stat working" title="4 枚正在受派人手上">
+        <span class="bbs-icon">⏳</span><span class="bbs-num">4</span>进行
+      </span>
+      <span class="brief-banner-stat pending" title="2 枚等你拍板">
+        <span class="bbs-icon">⚠</span><span class="bbs-num">2</span>需拍板
+      </span>
+    </div>
+    <button class="brief-banner-toggle" id="briefToggle" aria-expanded="false">
+      展开 <span class="chev">▾</span>
+    </button>
+  </div>
+  <!-- 展开详细卡（默认收起） -->
+  <div class="brief-expand" id="briefExpand">
+    <div class="brief-expand-inner">
+      <div class="brief-ask">
+        <span class="ask-tally">
+          <svg width="16" height="16" viewBox="0 0 24 24" class="tally" data-state="pending"></svg>
+        </span>
+        <div>
+          <div class="ask-label">需要你拍板</div>
+          <div class="ask-body">
+            <b>2 枚</b>（Sage #102 / Pat #098）·
+            最久那枚已等 <b>47 分钟</b>
+          </div>
+        </div>
+      </div>
+      <div class="brief-ask">
+        <span class="ask-tally">
+          <svg width="16" height="16" viewBox="0 0 24 24" class="tally" data-state="blocked"></svg>
+        </span>
+        <div>
+          <div class="ask-label">受派人卡住</div>
+          <div class="ask-body">
+            <b>Bob 手上 2 枚</b> 3 天未动 ·
+            建议：<em>催办或转派</em>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================
+       Topic Tabs — 议题（虎符的分组容器 / 过滤维度）
+       严格约束：
+         - 不是聊天空间
+         - 没有成员名单
+         - 没有未读红点
+         - 只是过滤器 + 命名 + icon + 状态徽标
+       =================================================== -->
+  <nav class="topic-bar" id="topicBar" aria-label="议题">
+    <span class="topic-bar-label">议题</span>
+
+    <button class="topic-tab all active"
+            data-topic="all" data-name="全部" data-icon="🌐" data-count="12">
+      <span class="tt-icon">🌐</span>
+      <span class="tt-name">全部</span>
+      <span class="tt-count">12</span>
+    </button>
+
+    <button class="topic-tab"
+            data-topic="q3-launch" data-name="Q3 产品发布" data-icon="🎯" data-count="4">
+      <span class="tt-icon">🎯</span>
+      <span class="tt-name">Q3 产品发布</span>
+      <span class="tt-count">4</span>
+    </button>
+
+    <button class="topic-tab"
+            data-topic="h2-overseas" data-name="H2 出海" data-icon="🎯" data-count="2">
+      <span class="tt-icon">🎯</span>
+      <span class="tt-name">H2 出海</span>
+      <span class="tt-count">2</span>
+    </button>
+
+    <button class="topic-tab"
+            data-topic="design-dept" data-name="设计部" data-icon="🏢" data-count="3">
+      <span class="tt-icon">🏢</span>
+      <span class="tt-name">设计部</span>
+      <span class="tt-count">3</span>
+    </button>
+
+    <div class="topic-bar-right">
+      <button class="topic-more" id="topicMoreBtn" aria-haspopup="true" aria-expanded="false">
+        更多 <span class="chev">▾</span>
+      </button>
+      <button class="topic-new" id="topicNewBtn" title="新建一个议题">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        新建
+      </button>
+    </div>
+
+    <!-- "更多" 下拉 — 剩余 6 个议题 + 搜索 -->
+    <div class="topic-dropdown" id="topicDropdown" role="menu">
+      <div class="topic-dd-list">
+        <div class="topic-dd-item" data-topic="customer-a" data-name="客户 A 续约" data-icon="👤" data-count="2">
+          <span class="dd-icon">👤</span>
+          <span class="dd-name">客户 A 续约</span>
+          <span class="dd-type">客户</span>
+          <span class="dd-count">2</span>
+        </div>
+        <div class="topic-dd-item" data-topic="customer-b" data-name="客户 B 售前" data-icon="👤" data-count="1">
+          <span class="dd-icon">👤</span>
+          <span class="dd-name">客户 B 售前</span>
+          <span class="dd-type">客户</span>
+          <span class="dd-count">1</span>
+        </div>
+        <div class="topic-dd-item" data-topic="eng-team" data-name="工程团队" data-icon="🏢" data-count="5">
+          <span class="dd-icon">🏢</span>
+          <span class="dd-name">工程团队</span>
+          <span class="dd-type">部门</span>
+          <span class="dd-count">5</span>
+        </div>
+        <div class="topic-dd-item" data-topic="legal-team" data-name="法务团队" data-icon="🏢" data-count="1">
+          <span class="dd-icon">🏢</span>
+          <span class="dd-name">法务团队</span>
+          <span class="dd-type">部门</span>
+          <span class="dd-count">1</span>
+        </div>
+        <div class="topic-dd-item" data-topic="okr-review" data-name="内部 OKR 季度复盘" data-icon="🎯" data-count="0">
+          <span class="dd-icon">🎯</span>
+          <span class="dd-name">内部 OKR 季度复盘</span>
+          <span class="dd-type">项目</span>
+          <span class="dd-count">0</span>
+        </div>
+        <div class="topic-dd-item" data-topic="cmb-poc" data-name="招商银行 PoC" data-icon="🎯" data-count="3">
+          <span class="dd-icon">🎯</span>
+          <span class="dd-name">招商银行 PoC</span>
+          <span class="dd-type">客户</span>
+          <span class="dd-count">3</span>
+        </div>
+      </div>
+      <div class="topic-dd-search">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-faint);flex-shrink:0;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" placeholder="搜索议题…" id="topicSearchInput" />
+      </div>
+    </div>
+  </nav>
+
+  <!-- ===================================================
+       Body — sidebar + main
+       =================================================== -->
+  <div class="body">
+
+    <!-- ===================== Sidebar ===================== -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h3>虎符总览</h3>
+        <button class="new-tally-btn" title="发出一枚新虎符">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          发出
+        </button>
+      </div>
+
+      <div class="sb-scroll">
+
+        <!-- ===== 我发出的虎符 ===== -->
+        <div class="sb-section-head">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="head-tally"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+          我发出的虎符
+        </div>
+        <div class="sb-section-hint">分派出去、等对方交回</div>
+
+        <!-- 待你拍板 -->
+        <div class="tally-group">
+          <div class="tally-group-label pending">
+            <span>待你拍板</span>
+            <span class="count">2</span>
+          </div>
+
+          <div class="tally-item pending" title="#102 — Sage 等你拍板">
+            <div class="tally-icon-cell">
+              <span class="tally-wrap" data-tip="待你拍板">
+                <svg width="16" height="16" viewBox="0 0 24 24" class="tally" data-state="pending"></svg>
+              </span>
+            </div>
+            <div class="tally-meta">
+              <div class="tally-title">
+                <span class="tally-id">#102</span>Sage 起草第 3 章
+              </div>
+              <div class="tally-sub">
+                <span class="recipient-dot sage"></span>Sage · <span class="wait-tag">等 47 分钟</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="tally-item pending" title="#098 — Pat 等你 review">
+            <div class="tally-icon-cell">
+              <span class="tally-wrap" data-tip="待你拍板">
+                <svg width="16" height="16" viewBox="0 0 24 24" class="tally" data-state="pending"></svg>
+              </span>
+            </div>
+            <div class="tally-meta">
+              <div class="tally-title">
+                <span class="tally-id">#098</span>Pat 调研 Notion 架构
+              </div>
+              <div class="tally-sub">
+                <span class="recipient-dot pat"></span>Pat · <span class="wait-tag">等你 review</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 进行中 -->
+        <div class="tally-group">
+          <div class="tally-group-label">
+            <span>进行中</span>
+            <span class="count">4</span>
+          </div>
+
+          <div class="tally-item" title="#104 — Quinn 正在处理">
+            <div class="tally-icon-cell">
+              <span class="tally-wrap" data-tip="进行中">
+                <svg width="16" height="16" viewBox="0 0 24 24" class="tally" data-state="working" style="color: var(--agent-quinn);"></svg>
+              </span>
+            </div>
+            <div class="tally-meta">
+              <div class="tally-title">
+                <span class="tally-id">#104</span>竞品矩阵分析
+              </div>
+              <div class="tally-sub"><span class="recipient-dot quinn"></span>Quinn · 已 1h 20m</div>
+            </div>
+          </div>
+
+          <div class="tally-item" title="#103 — Sage 起草中">
+            <div class="tally-icon-cell">
+              <span class="tally-wrap" data-tip="进行中">
+                <svg width="16" height="16" viewBox="0 0 24 24" class="tally" data-state="working" style="color: var(--agent-sage);"></svg>
+              </span>
+            </div>
+            <div class="tally-meta">
+              <div class="tally-title">
+                <span class="tally-id">#103</span>客户 A 方案 §2-§4
+              </div>
+              <div class="tally-sub"><span class="recipient-dot sage"></span>Sage · 60%</div>
+            </div>
+          </div>
+
+          <div class="tally-item" title="#101 — Pat + Quinn 协作中">
+            <div class="tally-icon-cell">
+              <span class="tally-wrap" data-tip="进行中">
+                <svg width="16" height="16" viewBox="0 0 24 24" class="tally" data-state="working" style="color: var(--agent-pat);"></svg>
+              </span>
+            </div>
+            <div class="tally-meta">
+              <div class="tally-title">
+                <span class="tally-id">#101</span>10 场访谈纪要
+              </div>
+              <div class="tally-sub"><span class="recipient-dot pat"></span><span class="recipient-dot quinn"></span>Pat + Quinn</div>
+            </div>
+          </div>
+
+          <div class="tally-item" title="#099 — Sage 起草新人材料">
+            <div class="tally-icon-cell">
+              <span class="tally-wrap" data-tip="进行中">
+                <svg width="16" height="16" viewBox="0 0 24 24" class="tally" data-state="working" style="color: var(--agent-sage);"></svg>
+              </span>
+            </div>
+            <div class="tally-meta">
+              <div class="tally-title">
+                <span class="tally-id">#099</span>新人入职材料更新
+              </div>
+              <div class="tally-sub"><span class="recipient-dot sage"></span>Sage · 35%</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 卡住的 -->
+        <div class="tally-group">
+          <div class="tally-group-label blocked">
+            <span>卡住的</span>
+            <span class="count">2</span>
+          </div>
+
+          <div class="tally-item blocked" title="#091 — Bob 3 天未动">
+            <div class="tally-icon-cell">
+              <span class="tally-wrap" data-tip="阻塞 / 卡住">
+                <svg width="16" height="16" viewBox="0 0 24 24" class="tally" data-state="blocked"></svg>
+              </span>
+            </div>
+            <div class="tally-meta">
+              <div class="tally-title">
+                <span class="tally-id">#091</span>合同评审
+              </div>
+              <div class="tally-sub">
+                <span class="recipient-dot human"></span>Bob · <span class="stuck-tag">3 天未动</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="tally-item blocked" title="#089 — Bob 2 天未动">
+            <div class="tally-icon-cell">
+              <span class="tally-wrap" data-tip="阻塞 / 卡住">
+                <svg width="16" height="16" viewBox="0 0 24 24" class="tally" data-state="blocked"></svg>
+              </span>
+            </div>
+            <div class="tally-meta">
+              <div class="tally-title">
+                <span class="tally-id">#089</span>预算确认
+              </div>
+              <div class="tally-sub">
+                <span class="recipient-dot human"></span>Bob · <span class="stuck-tag">2 天未动</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 已闭合 -->
+        <div class="tally-group">
+          <div class="tally-group-label sealed">
+            <span>已闭合</span>
+            <span class="count">8</span>
+            <span class="toggle-mini" id="sealedToggle">展开 ▾</span>
+          </div>
+          <div class="sealed-list" id="sealedList">
+            <div class="tally-item sealed">
+              <div class="tally-icon-cell">
+                <span class="tally-wrap" data-tip="已闭合">
+                  <svg width="16" height="16" viewBox="0 0 24 24" class="tally" data-state="sealed"></svg>
+                </span>
+              </div>
+              <div class="tally-meta">
+                <div class="tally-title"><span class="tally-id">#097</span>Q2 OKR 复盘</div>
+                <div class="tally-sub"><span class="recipient-dot sage"></span>2 天前合一</div>
+              </div>
+            </div>
+            <div class="tally-item sealed">
+              <div class="tally-icon-cell">
+                <span class="tally-wrap" data-tip="已闭合">
+                  <svg width="16" height="16" viewBox="0 0 24 24" class="tally" data-state="sealed"></svg>
+                </span>
+              </div>
+              <div class="tally-meta">
+                <div class="tally-title"><span class="tally-id">#093</span>招聘 JD（设计师 ×2）</div>
+                <div class="tally-sub"><span class="recipient-dot sage"></span>3 天前合一</div>
+              </div>
+            </div>
+            <div class="tally-item sealed">
+              <div class="tally-icon-cell">
+                <span class="tally-wrap" data-tip="已闭合">
+                  <svg width="16" height="16" viewBox="0 0 24 24" class="tally" data-state="sealed"></svg>
+                </span>
+              </div>
+              <div class="tally-meta">
+                <div class="tally-title"><span class="tally-id">#088</span>行业政策周报</div>
+                <div class="tally-sub"><span class="recipient-dot pat"></span>4 天前合一</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== 我接到的虎符 ===== -->
+        <div class="sb-section-head" style="margin-top: 16px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="head-tally"><path d="M19 12H5M11 19l-7-7 7-7"/></svg>
+          我接到的虎符
+        </div>
+        <div class="sb-section-hint">别人交付到你手上、等你处理</div>
+
+        <div class="tally-group">
+          <div class="tally-group-label">
+            <span>共</span>
+            <span class="count">3</span>
+          </div>
+
+          <div class="tally-item" title="Jamie 发给你">
+            <div class="tally-icon-cell">
+              <span class="tally-wrap" data-tip="进行中 — 等你处理">
+                <svg width="16" height="16" viewBox="0 0 24 24" class="tally" data-state="working" style="color: var(--text-muted);"></svg>
+              </span>
+            </div>
+            <div class="tally-meta">
+              <div class="tally-title"><span class="tally-id">#J-12</span>Logo 终稿确认</div>
+              <div class="tally-sub"><span class="recipient-dot human"></span>来自 Jamie · 今早</div>
+            </div>
+          </div>
+
+          <div class="tally-item" title="Maya 发给你">
+            <div class="tally-icon-cell">
+              <span class="tally-wrap" data-tip="进行中 — 等你处理">
+                <svg width="16" height="16" viewBox="0 0 24 24" class="tally" data-state="working" style="color: var(--text-muted);"></svg>
+              </span>
+            </div>
+            <div class="tally-meta">
+              <div class="tally-title"><span class="tally-id">#M-04</span>定价方案投票</div>
+              <div class="tally-sub"><span class="recipient-dot human"></span>来自 Maya · 昨天</div>
+            </div>
+          </div>
+
+          <div class="tally-item" title="Bob 发给你">
+            <div class="tally-icon-cell">
+              <span class="tally-wrap" data-tip="进行中 — 等你处理">
+                <svg width="16" height="16" viewBox="0 0 24 24" class="tally" data-state="working" style="color: var(--text-muted);"></svg>
+              </span>
+            </div>
+            <div class="tally-meta">
+              <div class="tally-title"><span class="tally-id">#B-21</span>Q3 计划评审</div>
+              <div class="tally-sub"><span class="recipient-dot human"></span>来自 Bob · 2 天前</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ===== 我的文档（Artifact 入口） =====
+             视觉位置：左栏最底部；前两组虎符（pin）仍最先可见。
+             原则：count 一律浅灰 chip，无红色 badge — 沉默是默认。
+        -->
+        <div class="sb-divider" aria-hidden="true"></div>
+
+        <div class="sb-section-head" style="margin-top: 4px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" class="head-tally"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
+          我的文档
+          <span class="head-count">24</span>
+        </div>
+        <div class="sb-section-hint">虎符产出 · 共享 artifact</div>
+
+        <div class="tally-group">
+          <div class="doc-item" title="最近你编辑过的文档">
+            <span class="doc-label">最近编辑</span>
+            <span class="doc-count">5</span>
+          </div>
+
+          <div class="doc-item" title="你或 Agent 替你创建的文档">
+            <span class="doc-label">我创建的</span>
+            <span class="doc-count">12</span>
+          </div>
+
+          <div class="doc-item" title="别人共享给你的文档">
+            <span class="doc-label">收到的</span>
+            <span class="doc-count">3</span>
+          </div>
+
+          <div class="doc-toggle" id="docByTopicToggle" title="按议题分组查看文档">
+            <span>按议题归类</span>
+            <span class="doc-toggle-caret">▾</span>
+          </div>
+          <div class="doc-by-topic" id="docByTopicList">
+            <div class="doc-item" title="Q3 产品发布 · 8 篇文档">
+              <span class="doc-topic-icon">🎯</span>
+              <span class="doc-label">Q3 产品发布</span>
+              <span class="doc-count">8</span>
+            </div>
+            <div class="doc-item" title="设计部 · 11 篇文档">
+              <span class="doc-topic-icon">🏢</span>
+              <span class="doc-label">设计部</span>
+              <span class="doc-count">11</span>
+            </div>
+            <div class="doc-item" title="客户访谈 · 5 篇文档">
+              <span class="doc-topic-icon">💬</span>
+              <span class="doc-label">客户访谈</span>
+              <span class="doc-count">5</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- ===================== Main ===================== -->
+    <main class="main">
+      <div class="main-inner" id="mainInner">
+
+        <!-- ============================================
+             Topic 过滤指示字（默认隐藏；切换非"全部"时显现）
+             ============================================ -->
+        <div class="topic-indicator" id="topicIndicator">
+          <span class="ti-icon" id="tiIcon">🎯</span>
+          <span>显示议题：<span class="ti-name" id="tiName">Q3 产品发布</span></span>
+          <span class="ti-count" id="tiCount">(4 枚)</span>
+          <button class="ti-clear" id="tiClear">查看全部 ×</button>
+        </div>
+
+        <!-- ============================================
+             顶部入门引导卡（新用户教育）
+             - localStorage 控制：用户主动关闭 / 累计 10h 后自动隐藏
+             - 左侧虎符演示动画：分开 → 合拢 → 分开（3.6s 一循环）
+             ============================================ -->
+        <section class="onboarding" id="onboardingCard">
+          <button class="onb-close" id="onbClose" aria-label="我懂了，关闭引导">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+          <div class="onb-demo" title="虎符演示：两半合一">
+            <svg width="42" height="42" viewBox="0 0 24 24" class="tally" data-state="working"></svg>
+          </div>
+          <div class="onb-content">
+            <h3 class="onb-title">
+              <span class="onb-tally-tag">Tally</span> 是你的「执行助理」 — 每件分派的事 = 一枚「虎符」
+            </h3>
+            <div class="onb-lines">
+              <span class="onb-em">虎符</span>：古代调兵的凭证，左右两半、合一为信。<br/>
+              发出去 → 受派人接 → 完成时<span class="onb-em">两半合拢</span>。
+              谁手上未交回的虎符越多，事就<span class="onb-em">卡在哪里</span>。
+            </div>
+            <div class="onb-actions">
+              <button class="onb-btn primary">入门指南</button>
+              <button class="onb-btn" id="onbDismiss">我懂了</button>
+            </div>
+            <div class="onb-dev" id="onbDevBlock">
+              <span id="onbDebugTime">debug: 累计活跃 0分0秒 / 10小时</span>
+              <button class="onb-dev-link" id="onbReset">[重置引导]</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================
+             待你拍板的虎符
+             ============================================ -->
+        <section class="section">
+          <div class="sec-h">
+            <span class="sec-h-tally">
+              <svg width="18" height="18" viewBox="0 0 24 24" class="tally" data-state="pending"></svg>
+            </span>
+            <h2>待你拍板的虎符</h2>
+            <span class="sec-count">· 2</span>
+            <span class="sec-desc">合不了就发不动</span>
+          </div>
+
+          <!-- 决策卡 #102 -->
+          <div class="decision-card pending">
+            <div class="dc-head">
+              <div class="dc-tally-cell">
+                <span class="tally-wrap" data-tip="待你拍板">
+                  <svg width="34" height="34" viewBox="0 0 24 24" class="tally" data-state="pending"></svg>
+                </span>
+                <span class="dc-id">#102</span>
+              </div>
+              <div class="dc-title">
+                <h3>Sage 想调用付费 API <span class="amount">$4.20</span></h3>
+                <div class="dc-meta">
+                  <span>所属：<strong style="color:var(--text-muted);font-weight:500;">重构 IM 架构</strong></span>
+                  <span class="meta-sep">·</span>
+                  <span class="recipient"><span class="rec-dot sage"></span>受派人 Sage</span>
+                  <span class="meta-sep">·</span>
+                  <span class="wait-tag">等 47 分钟</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="dc-rows">
+              <div class="k">Why</div>
+              <div class="v">起草第 3 章需要爬取 Notion 公开 API 文档完整结构（24 个 endpoint）以保证准确性</div>
+
+              <div class="k">风险</div>
+              <div class="v warn">单次费用 $4.20 · 不可逆 · 已超出 Intent 默认预算 $25（当前已花 $22.80）</div>
+
+              <div class="k">可逆性</div>
+              <div class="v">
+                <span class="chip warn">⚠ 不可逆</span>
+                <span class="chip">一次性付费查询，无法撤销</span>
+              </div>
+            </div>
+
+            <div class="dc-actions">
+              <button class="btn primary"><span class="ico">✓</span>批准</button>
+              <button class="btn danger"><span class="ico">✗</span>拒绝</button>
+              <button class="btn"><span class="ico">⚙</span>改额度</button>
+              <button class="btn ghost"><span class="ico">💬</span>追问 Sage</button>
+              <span class="spacer"></span>
+              <span class="actions-note">⌘1 批准 · ⌘2 拒绝</span>
+            </div>
+          </div>
+
+          <!-- 决策卡 #098 -->
+          <div class="decision-card pending">
+            <div class="dc-head">
+              <div class="dc-tally-cell">
+                <span class="tally-wrap" data-tip="待你拍板">
+                  <svg width="34" height="34" viewBox="0 0 24 24" class="tally" data-state="pending"></svg>
+                </span>
+                <span class="dc-id">#098</span>
+              </div>
+              <div class="dc-title">
+                <h3>Pat 完成"Notion 架构调研"，请 review 后决定下一步</h3>
+                <div class="dc-meta">
+                  <span>所属：<strong style="color:var(--text-muted);font-weight:500;">Q3 竞品分析</strong></span>
+                  <span class="meta-sep">·</span>
+                  <span class="recipient"><span class="rec-dot pat"></span>受派人 Pat</span>
+                  <span class="meta-sep">·</span>
+                  <span class="wait-tag">等 2h</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="dc-rows">
+              <div class="k">产出</div>
+              <div class="v">一份 8 页对比报告，涵盖 <strong>5 家</strong>竞品的<strong>定价策略 + 功能矩阵</strong></div>
+
+              <div class="k">引用源</div>
+              <div class="v">
+                <span class="chip info">14 个引用</span>
+                <span class="chip ok">平均置信度 92%</span>
+                <span class="chip">2 处需 Pat 二次确认</span>
+              </div>
+
+              <div class="k">下一步</div>
+              <div class="v">合一后 Quinn 会基于此发出新虎符做"功能差距分析"（预计 1.5h）</div>
+            </div>
+
+            <div class="dc-actions">
+              <button class="btn primary"><span class="ico">👀</span>查看产出</button>
+              <button class="btn"><span class="ico">✓</span>通过并闭合</button>
+              <button class="btn"><span class="ico">↺</span>让 Pat 重做</button>
+              <button class="btn ghost"><span class="ico">💬</span>追问</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================
+             卡在受派人手里的虎符
+             ============================================ -->
+        <section class="section">
+          <div class="sec-h">
+            <span class="sec-h-tally">
+              <svg width="18" height="18" viewBox="0 0 24 24" class="tally" data-state="blocked"></svg>
+            </span>
+            <h2>卡在受派人手里</h2>
+            <span class="sec-count">· 2</span>
+            <span class="sec-desc">不合一就归不了档</span>
+          </div>
+
+          <!-- 决策卡 #091 -->
+          <div class="decision-card blocked">
+            <div class="dc-head">
+              <div class="dc-tally-cell">
+                <span class="tally-wrap" data-tip="阻塞 / 受派人未交回">
+                  <svg width="34" height="34" viewBox="0 0 24 24" class="tally" data-state="blocked"></svg>
+                </span>
+                <span class="dc-id">#091</span>
+              </div>
+              <div class="dc-title">
+                <h3>合同评审 — Bob 手上 3 天未动</h3>
+                <div class="dc-meta">
+                  <span>所属：<strong style="color:var(--text-muted);font-weight:500;">客户 A 签约</strong></span>
+                  <span class="meta-sep">·</span>
+                  <span class="recipient"><span class="rec-dot human"></span>受派人 Bob（法务）</span>
+                  <span class="meta-sep">·</span>
+                  <span class="stuck-tag">⚠ 已超期 1 天</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="dc-rows">
+              <div class="k">现状</div>
+              <div class="v">Tally 已 <strong>5月21日 9:14</strong> 发出，对方读过但未回应。上次活动：<strong>3 天前</strong></div>
+
+              <div class="k">影响</div>
+              <div class="v danger">阻塞下游 2 枚虎符（#092 客户启动会议、#094 SOW 草稿）</div>
+
+              <div class="k">建议</div>
+              <div class="v">
+                <span class="chip warn">催办</span>
+                <span class="chip info">转派 Carol（法务备份）</span>
+                <span class="chip">改截止日</span>
+              </div>
+            </div>
+
+            <div class="dc-actions">
+              <button class="btn urge"><span class="ico">⏰</span>立刻催办 Bob</button>
+              <button class="btn"><span class="ico">↗</span>转派给 Carol</button>
+              <button class="btn"><span class="ico">⚙</span>改截止日</button>
+              <button class="btn ghost"><span class="ico">💬</span>私聊 Bob</button>
+              <span class="spacer"></span>
+              <span class="actions-note">Tally 会替你转交</span>
+            </div>
+          </div>
+
+          <!-- 决策卡 #089 -->
+          <div class="decision-card blocked">
+            <div class="dc-head">
+              <div class="dc-tally-cell">
+                <span class="tally-wrap" data-tip="阻塞 / 受派人未交回">
+                  <svg width="34" height="34" viewBox="0 0 24 24" class="tally" data-state="blocked"></svg>
+                </span>
+                <span class="dc-id">#089</span>
+              </div>
+              <div class="dc-title">
+                <h3>Q3 预算确认 — 同样在 Bob 手上 2 天未动</h3>
+                <div class="dc-meta">
+                  <span>所属：<strong style="color:var(--text-muted);font-weight:500;">Q3 预算定调</strong></span>
+                  <span class="meta-sep">·</span>
+                  <span class="recipient"><span class="rec-dot human"></span>受派人 Bob</span>
+                  <span class="meta-sep">·</span>
+                  <span class="stuck-tag">⚠ 同一受派人重复阻塞</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="dc-rows">
+              <div class="k">观察</div>
+              <div class="v warn">Bob 本周已有 2 枚虎符未回。可能他这周状态/优先级有问题——你或许该先了解一下情况</div>
+
+              <div class="k">建议</div>
+              <div class="v">
+                <span class="chip warn">合并催办（两枚一起）</span>
+                <span class="chip info">私聊确认状态</span>
+              </div>
+            </div>
+
+            <div class="dc-actions">
+              <button class="btn urge"><span class="ico">⏰</span>合并催办</button>
+              <button class="btn ghost"><span class="ico">💬</span>私聊 Bob 问问</button>
+              <button class="btn"><span class="ico">↗</span>转派</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================
+             昨天闭合的虎符 — 折叠归档
+             ============================================ -->
+        <section class="section">
+          <div class="sec-h">
+            <span class="sec-h-tally">
+              <svg width="18" height="18" viewBox="0 0 24 24" class="tally" data-state="sealed"></svg>
+            </span>
+            <h2>昨天闭合的虎符</h2>
+            <span class="sec-count">· 8</span>
+            <span class="sec-desc">扫一眼就好，不必逐条读</span>
+          </div>
+
+          <div class="sealed-box" id="sealedBox">
+            <div class="sealed-head" id="sealedBoxToggle">
+              <span class="chev">▶</span>
+              <span class="sh-title">8 枚虎符合一归档（默认折叠）</span>
+              <span class="sh-sub">点击展开</span>
+            </div>
+            <div class="sealed-list-wrap">
+
+              <div class="sealed-row">
+                <div class="sr-tally-cell">
+                  <span class="tally-wrap" data-tip="已闭合">
+                    <svg width="14" height="14" viewBox="0 0 24 24" class="tally" data-state="sealed"></svg>
+                  </span>
+                </div>
+                <div class="sr-id">#097</div>
+                <div class="sr-agent sage">S</div>
+                <div class="sr-text">
+                  Sage 交回 <strong>Q2 OKR 复盘</strong>
+                  <span class="muted">· 引用 12 份原文</span>
+                </div>
+                <div class="sr-meta">00:30 合一</div>
+              </div>
+
+              <div class="sealed-row">
+                <div class="sr-tally-cell">
+                  <span class="tally-wrap" data-tip="已闭合">
+                    <svg width="14" height="14" viewBox="0 0 24 24" class="tally" data-state="sealed"></svg>
+                  </span>
+                </div>
+                <div class="sr-id">#096</div>
+                <div class="sr-agent pat">P</div>
+                <div class="sr-text">
+                  Pat 交回 <strong>Notion 架构调研</strong>
+                  <span class="muted">· 5 篇引用</span>
+                </div>
+                <div class="sr-meta">02:15 合一</div>
+              </div>
+
+              <div class="sealed-row">
+                <div class="sr-tally-cell">
+                  <span class="tally-wrap" data-tip="已闭合">
+                    <svg width="14" height="14" viewBox="0 0 24 24" class="tally" data-state="sealed"></svg>
+                  </span>
+                </div>
+                <div class="sr-id">#095</div>
+                <div class="sr-agent sage">S</div>
+                <div class="sr-text">
+                  Sage 交回 <strong>§1, §2 起草</strong>
+                  <span class="muted">· v1.0</span>
+                </div>
+                <div class="sr-meta">04:00 合一</div>
+              </div>
+
+              <div class="sealed-row">
+                <div class="sr-tally-cell">
+                  <span class="tally-wrap" data-tip="已闭合">
+                    <svg width="14" height="14" viewBox="0 0 24 24" class="tally" data-state="sealed"></svg>
+                  </span>
+                </div>
+                <div class="sr-id">#094</div>
+                <div class="sr-agent quinn">Q</div>
+                <div class="sr-text">
+                  Quinn 交回 <strong>竞品矩阵分析</strong>
+                  <span class="muted">· 5 × 8 矩阵</span>
+                </div>
+                <div class="sr-meta">06:45 合一</div>
+              </div>
+
+              <div class="sealed-row">
+                <div class="sr-tally-cell">
+                  <span class="tally-wrap" data-tip="已闭合">
+                    <svg width="14" height="14" viewBox="0 0 24 24" class="tally" data-state="sealed"></svg>
+                  </span>
+                </div>
+                <div class="sr-id">#093</div>
+                <div class="sr-agent ren">R</div>
+                <div class="sr-text">
+                  Ren 交回 <strong>v1.2 审阅</strong>
+                  <span class="muted">· 提 4 条 / 接受 3</span>
+                </div>
+                <div class="sr-meta">07:20 合一</div>
+              </div>
+
+              <div class="sealed-row">
+                <div class="sr-tally-cell">
+                  <span class="tally-wrap" data-tip="已闭合">
+                    <svg width="14" height="14" viewBox="0 0 24 24" class="tally" data-state="sealed"></svg>
+                  </span>
+                </div>
+                <div class="sr-id">#092</div>
+                <div class="sr-agent pat">P</div>
+                <div class="sr-text">
+                  Pat 交回 <strong>3 场访谈纪要</strong>
+                  <span class="muted">· 提取 18 条洞察</span>
+                </div>
+                <div class="sr-meta">07:50 合一</div>
+              </div>
+
+              <div class="sealed-row">
+                <div class="sr-tally-cell">
+                  <span class="tally-wrap" data-tip="已闭合">
+                    <svg width="14" height="14" viewBox="0 0 24 24" class="tally" data-state="sealed"></svg>
+                  </span>
+                </div>
+                <div class="sr-id">#090</div>
+                <div class="sr-agent quinn">Q</div>
+                <div class="sr-text">
+                  Quinn 交回 <strong>18 → 5 主题聚类</strong>
+                </div>
+                <div class="sr-meta">08:05 合一</div>
+              </div>
+
+              <div class="sealed-row">
+                <div class="sr-tally-cell">
+                  <span class="tally-wrap" data-tip="已闭合">
+                    <svg width="14" height="14" viewBox="0 0 24 24" class="tally" data-state="sealed"></svg>
+                  </span>
+                </div>
+                <div class="sr-id">#087</div>
+                <div class="sr-agent sage">S</div>
+                <div class="sr-text">
+                  Sage 交回 <strong>客户 A §2-§4 草稿</strong>
+                  <span class="muted">· v0.6</span>
+                </div>
+                <div class="sr-meta">08:18 合一</div>
+              </div>
+
+            </div>
+          </div>
+        </section>
+
+        <!-- CTA -->
+        <button class="cta-row">
+          <div>
+            <div class="cta-text">先合两枚等你拍板的虎符</div>
+            <div class="cta-sub">#102 Sage · #098 Pat — 合一后下游 3 枚虎符可继续运作</div>
+          </div>
+          <span class="cta-btn">
+            开始拍板
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+          </span>
+        </button>
+
+        <!-- =====================================================
+             Tester guide
+             ===================================================== -->
+        <section class="tester">
+          <div class="tester-divider">─────  给测试用户  ─────</div>
+          <h4>Tally 是你的"执行助理"。每件你分派的事，是一枚虎符。</h4>
+          <p>
+            "虎符"取自中国古代的兵符——劈成两半，分派与受派各执其一。
+            <strong>合而为一，事才算闭合归档。</strong>
+            谁手上的未交回虎符越多，就是事卡在哪里。
+          </p>
+          <p>
+            主界面不再是"未读消息"，而是 <strong>"未合的虎符" + "Tally 替你跟的早间汇报"</strong>。
+            Tally 不是 4 位专业 Agent 之一，它是替你统筹所有虎符的"高级行政助理"。
+          </p>
+          <p style="margin-top:14px;color:var(--text);font-weight:500;">请回答 3 个问题：</p>
+          <ol>
+            <li><strong>第一眼看 5 秒</strong>，"虎符"的隐喻让你直觉理解到产品在做什么吗？还是反而增加了认知负担？</li>
+            <li>你看到"我发出 / 我接到的虎符"两栏，是否立刻明白这是 <strong>"我派出去 vs. 别人给我"</strong> 的方向区分？</li>
+            <li>Tally 助理替你跟所有事 + 必要时调度 4 位 Agent——这个"两层结构"对你来说<strong>清晰</strong>还是<strong>多余</strong>？</li>
+          </ol>
+        </section>
+
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- =====================================================
+     Floating private bubble
+     ===================================================== -->
+<button class="qchat-bubble" id="qchatBtn" aria-label="私密浮层">
+  <span class="qb-icon">🔒</span>
+  <span>⌘K 与同事或 Tally 助理私聊（公司看不到）</span>
+</button>
+
+<div class="qchat-pop" id="qchatPop" role="dialog" aria-label="私聊">
+  <div class="qchat-pop-head">
+    <div class="qph-icon">🔒</div>
+    <div>
+      <div class="qph-title">私密快聊</div>
+      <div class="qph-sub">公司不可见 · 端到端加密</div>
+    </div>
+    <button class="close" id="qchatClose" aria-label="关闭">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="qchat-pop-body">
+    <div class="qpb-label">最近</div>
+    <div class="qchat-recent">
+      <div class="qrow">
+        <div class="qr-av" style="background:linear-gradient(135deg,#5a4fcf,#8e85e8);color:white;">
+          <svg width="11" height="11" viewBox="0 0 24 24" class="tally" data-state="sealed"></svg>
+        </div>
+        <span class="qr-name">Tally（你的助理）</span>
+        <span class="qr-time">刚才</span>
+      </div>
+      <div class="qrow">
+        <div class="qr-av" style="background:linear-gradient(135deg,#5a4fcf,#8e85e8);color:white;">J</div>
+        <span class="qr-name">Jamie（设计同事）</span>
+        <span class="qr-time">昨晚</span>
+      </div>
+      <div class="qrow">
+        <div class="qr-av" style="background:var(--agent-sage);color:white;">S</div>
+        <span class="qr-name">Sage（你的 Agent）</span>
+        <span class="qr-time">3 天前</span>
+      </div>
+    </div>
+
+    <div class="qchat-input">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-faint);"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input type="text" placeholder="搜同事 / Agent / Tally 助理…" />
+      <span class="kbd" style="font-family:var(--mono);font-size:10.5px;background:var(--bg-elev);border:1px solid var(--border);padding:1px 5px;border-radius:3px;color:var(--text-faint);">↵</span>
+    </div>
+
+    <div class="qchat-private-note">
+      这是一个独立的"私下空间"。这里的对话不会进入虎符记录，也不会被公司、你的 Agent 团队看到。
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================
+     新建议题浮层（mockup：仅展示，不真实创建）
+     ===================================================== -->
+<div class="topic-create-modal" id="topicCreateModal" role="dialog" aria-label="新建议题">
+  <div class="topic-create-card">
+    <div class="tcc-head">
+      <h3>新建议题</h3>
+      <p>议题是虎符的分组容器（项目 / 部门 / 客户 / 其他）。它不是聊天室，没有成员。</p>
+    </div>
+    <div class="tcc-body">
+      <div class="tcc-label">选择类型</div>
+      <div class="tcc-types" id="tccTypes">
+        <button class="tcc-type active" data-type="project">
+          <span class="tcc-type-icon">🎯</span>项目
+        </button>
+        <button class="tcc-type" data-type="department">
+          <span class="tcc-type-icon">🏢</span>部门
+        </button>
+        <button class="tcc-type" data-type="customer">
+          <span class="tcc-type-icon">👤</span>客户
+        </button>
+        <button class="tcc-type" data-type="other">
+          <span class="tcc-type-icon">📌</span>其他
+        </button>
+      </div>
+      <div class="tcc-label">议题名称</div>
+      <input type="text" class="tcc-input" id="tccInput" placeholder="例如：Q4 出海 / 法务团队 / 客户 C 商务洽谈…" />
+    </div>
+    <div class="tcc-foot">
+      <button class="tcc-btn" id="tccCancel">取消</button>
+      <button class="tcc-btn primary" id="tccCreate">创建</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // =========================================================
+  // 0. 虎符 SVG 自动注入 — 把所有 <svg class="tally"> 内部统一替换为
+  //    新版「抽象虎头剪影」结构（左右两半）
+  //
+  //    24×24 viewBox 几何说明：
+  //      - 两只圆耳（顶部，左 cx=6.2 / 右 cx=17.8，r=2.4）
+  //      - 圆角方脸（x=3.5..20.5, y=5..21）
+  //      - "王"字纹（额头 y=8..14）— 左右各画一半，中竖被两半各画一半
+  //      - 两点眼（左 cx=8.6 / 右 cx=15.4，r=0.9，y=12）
+  //      - 中线 x=12 把整张脸分成左右两半（svg group transform 控制间隙）
+  // =========================================================
+  (function injectTallySVG(){
+    // 左半虎头 path 数据
+    // 脸（左半，从中线绕外圈到中线，含下巴圆角）
+    var FACE_L = 'M 12 5.2 L 6.2 5.2 Q 3.5 5.2 3.5 8 L 3.5 17 Q 3.5 20.8 7 21 L 12 21 Z';
+    // 耳（左）
+    var EAR_L  = 'M 4.6 6.2 Q 4 3.4 6.2 3.4 Q 8.4 3.4 8.4 5.6 L 8.4 6.2 Q 7 6.6 5.6 7.4 Z';
+    // "王"字纹左半（三横 + 中竖左半）
+    // 三横：y=8.6 / y=11 / y=13.4，左半从 x=8 到 x=12
+    // 中竖：x=10.4, y=8.6..13.4（在额头偏左侧暗示）
+    var MARK_L = 'M 9 8.6 L 12 8.6 M 9.6 11 L 12 11 M 9 13.4 L 12 13.4 M 10.4 8.6 L 10.4 13.4';
+    // 眼（左）
+    var EYE_L  = { cx: 8.6, cy: 16.2, r: 0.95 };
+
+    // 右半（镜像）
+    var FACE_R = 'M 12 5.2 L 17.8 5.2 Q 20.5 5.2 20.5 8 L 20.5 17 Q 20.5 20.8 17 21 L 12 21 Z';
+    var EAR_R  = 'M 19.4 6.2 Q 20 3.4 17.8 3.4 Q 15.6 3.4 15.6 5.6 L 15.6 6.2 Q 17 6.6 18.4 7.4 Z';
+    var MARK_R = 'M 12 8.6 L 15 8.6 M 12 11 L 14.4 11 M 12 13.4 L 15 13.4 M 13.6 8.6 L 13.6 13.4';
+    var EYE_R  = { cx: 15.4, cy: 16.2, r: 0.95 };
+
+    function buildTallyInner(){
+      return (
+        // glow（合一后微光，圆角矩形）
+        '<rect class="t-glow" x="3.5" y="5" width="17" height="16.5" rx="3.5"/>' +
+        // 左半 group
+        '<g class="tally-half tally-left">' +
+          '<path class="t-face" d="' + FACE_L + '"/>' +
+          '<path class="t-ear"  d="' + EAR_L  + '"/>' +
+          '<path class="t-mark" d="' + MARK_L + '"/>' +
+          '<circle class="t-eye" cx="' + EYE_L.cx + '" cy="' + EYE_L.cy + '" r="' + EYE_L.r + '"/>' +
+        '</g>' +
+        // 右半 group
+        '<g class="tally-half tally-right">' +
+          '<path class="t-face" d="' + FACE_R + '"/>' +
+          '<path class="t-ear"  d="' + EAR_R  + '"/>' +
+          '<path class="t-mark" d="' + MARK_R + '"/>' +
+          '<circle class="t-eye" cx="' + EYE_R.cx + '" cy="' + EYE_R.cy + '" r="' + EYE_R.r + '"/>' +
+        '</g>'
+      );
+    }
+
+    var inner = buildTallyInner();
+    var nodes = document.querySelectorAll('svg.tally');
+    nodes.forEach(function(svg){
+      // 保留原 svg 的 viewBox / width / height / style / data-state，仅替换内容
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.innerHTML = inner;
+    });
+  })();
+
+  // =========================================================
+  // 0.5 早间汇报 Banner — 展开 / 收起
+  // =========================================================
+  (function(){
+    var banner = document.getElementById('briefBanner');
+    var toggle = document.getElementById('briefToggle');
+    var expand = document.getElementById('briefExpand');
+    if (!banner || !toggle || !expand) return;
+    toggle.addEventListener('click', function(){
+      var open = expand.classList.toggle('open');
+      banner.classList.toggle('open', open);
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      var label = toggle.childNodes[0];
+      if (label && label.nodeType === 3) {
+        label.nodeValue = open ? '收起 ' : '展开 ';
+      }
+    });
+  })();
+
+  // =========================================================
+  // 1. 已闭合（侧栏）
+  // =========================================================
+  (function(){
+    var toggle = document.getElementById('sealedToggle');
+    var list   = document.getElementById('sealedList');
+    if (!toggle || !list) return;
+    toggle.addEventListener('click', function(e){
+      e.stopPropagation();
+      var open = list.classList.toggle('open');
+      toggle.textContent = open ? '收起 ▴' : '展开 ▾';
+    });
+  })();
+
+  // =========================================================
+  // 1b. "我的文档 — 按议题归类" 展开/折叠
+  // 与上面 sealedToggle 同源：click 切 .open，caret 通过 CSS 旋转
+  // =========================================================
+  (function(){
+    var toggle = document.getElementById('docByTopicToggle');
+    var list   = document.getElementById('docByTopicList');
+    if (!toggle || !list) return;
+    toggle.addEventListener('click', function(e){
+      e.stopPropagation();
+      var open = list.classList.toggle('open');
+      toggle.classList.toggle('open', open);
+    });
+  })();
+
+  // =========================================================
+  // 2. 昨日闭合（主区折叠盒）
+  // =========================================================
+  (function(){
+    var head = document.getElementById('sealedBoxToggle');
+    var box  = document.getElementById('sealedBox');
+    if (!head || !box) return;
+    head.addEventListener('click', function(){
+      box.classList.toggle('open');
+      var sub = head.querySelector('.sh-sub');
+      if (sub) sub.textContent = box.classList.contains('open') ? '点击折叠' : '点击展开';
+    });
+  })();
+
+  // =========================================================
+  // 3. Private chat popover (⌘K / click)
+  // =========================================================
+  (function(){
+    var pop   = document.getElementById('qchatPop');
+    var bub   = document.getElementById('qchatBtn');
+    var chip  = document.getElementById('kchipBtn');
+    var close = document.getElementById('qchatClose');
+    if (!pop) return;
+
+    function shut(){ pop.classList.remove('open'); }
+    function toggle(){ pop.classList.toggle('open'); }
+
+    bub  && bub.addEventListener('click', toggle);
+    chip && chip.addEventListener('click', toggle);
+    close && close.addEventListener('click', shut);
+
+    document.addEventListener('keydown', function(e){
+      var isMac = navigator.platform.toLowerCase().indexOf('mac') !== -1;
+      var mod = isMac ? e.metaKey : e.ctrlKey;
+      if (mod && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        toggle();
+      } else if (e.key === 'Escape') {
+        shut();
+      }
+    });
+
+    document.addEventListener('click', function(e){
+      if (!pop.contains(e.target) && !bub.contains(e.target) && !chip.contains(e.target)) {
+        shut();
+      }
+    });
+  })();
+
+  // =========================================================
+  // 4. 顶部入门引导卡 — 显示规则 + 累计活跃时间
+  //    - DISMISSED === true → 不显示
+  //    - ACTIVE_TIME_MS > 10h → 不显示
+  //    - 否则显示，每 30s 累加一次活跃时间
+  // =========================================================
+  (function(){
+    var KEY_DISMISSED = 'TALLY_ONBOARDING_DISMISSED';
+    var KEY_TIME      = 'TALLY_ACTIVE_TIME_MS';
+    var THRESHOLD_MS  = 10 * 3600 * 1000; // 10 小时
+    var TICK_MS       = 30 * 1000;        // 30 秒一次
+    var ACTIVITY_WINDOW = 30 * 1000;       // 30 秒内有活动 → 算活跃
+
+    var card        = document.getElementById('onboardingCard');
+    var btnDismiss  = document.getElementById('onbDismiss');
+    var btnClose    = document.getElementById('onbClose');
+    var btnReset    = document.getElementById('onbReset');
+    var debugLabel  = document.getElementById('onbDebugTime');
+    if (!card) return;
+
+    function getMs(){
+      var v = parseInt(localStorage.getItem(KEY_TIME) || '0', 10);
+      return isNaN(v) ? 0 : v;
+    }
+    function isDismissed(){
+      return localStorage.getItem(KEY_DISMISSED) === 'true';
+    }
+    function shouldShow(){
+      if (isDismissed()) return false;
+      if (getMs() > THRESHOLD_MS) return false;
+      return true;
+    }
+    function fmtTime(ms){
+      var totalSec = Math.floor(ms / 1000);
+      var h = Math.floor(totalSec / 3600);
+      var m = Math.floor((totalSec % 3600) / 60);
+      var s = totalSec % 60;
+      if (h > 0) return h + '小时' + m + '分';
+      return m + '分' + s + '秒';
+    }
+    function updateDebug(){
+      if (!debugLabel) return;
+      debugLabel.textContent = 'debug: 累计活跃 ' + fmtTime(getMs()) + ' / 10小时'
+        + (isDismissed() ? ' · 已手动关闭' : '');
+    }
+    function apply(){
+      if (shouldShow()) {
+        card.classList.remove('hidden');
+      } else {
+        card.classList.add('hidden');
+      }
+    }
+
+    // 活跃检测：30s 内有过 mousemove / keydown / click 就算活跃
+    var lastActivity = Date.now();
+    ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'].forEach(function(ev){
+      window.addEventListener(ev, function(){ lastActivity = Date.now(); }, { passive: true });
+    });
+
+    // 每 30s tick：若页面可见 + 最近 30s 有活动 → 累加 30s
+    setInterval(function(){
+      if (document.hidden) return;
+      if (Date.now() - lastActivity > ACTIVITY_WINDOW) return;
+      var cur = getMs();
+      localStorage.setItem(KEY_TIME, String(cur + TICK_MS));
+      updateDebug();
+      // 若刚刚跨过 10h 阈值 → 自动隐藏
+      if (cur + TICK_MS > THRESHOLD_MS) apply();
+    }, TICK_MS);
+
+    // 关闭按钮 → set DISMISSED + 立刻隐藏
+    function dismiss(){
+      localStorage.setItem(KEY_DISMISSED, 'true');
+      card.classList.add('hidden');
+      updateDebug();
+    }
+    btnDismiss && btnDismiss.addEventListener('click', dismiss);
+    btnClose   && btnClose.addEventListener('click', dismiss);
+
+    // dev 重置链接
+    btnReset && btnReset.addEventListener('click', function(){
+      localStorage.removeItem(KEY_DISMISSED);
+      localStorage.removeItem(KEY_TIME);
+      card.classList.remove('hidden');
+      updateDebug();
+    });
+
+    // 初始化
+    apply();
+    updateDebug();
+  })();
+
+  // =========================================================
+  // 5. Topic Tabs — 议题（虎符的分组容器）
+  //    - 切换 tab：fade 过渡 + 显示议题指示字 + 侧栏数字缩放
+  //    - "更多" 下拉：列出剩余议题 + 装饰性搜索框
+  //    - "+ 新建" 浮层：选择类型 + 输入名称（mockup 不真实创建）
+  // =========================================================
+  (function(){
+    var topicBar   = document.getElementById('topicBar');
+    var moreBtn    = document.getElementById('topicMoreBtn');
+    var dropdown   = document.getElementById('topicDropdown');
+    var newBtn     = document.getElementById('topicNewBtn');
+    var modal      = document.getElementById('topicCreateModal');
+    var modalCancel= document.getElementById('tccCancel');
+    var modalCreate= document.getElementById('tccCreate');
+    var modalTypes = document.getElementById('tccTypes');
+    var modalInput = document.getElementById('tccInput');
+    var mainInner  = document.getElementById('mainInner');
+    var indicator  = document.getElementById('topicIndicator');
+    var tiIcon     = document.getElementById('tiIcon');
+    var tiName     = document.getElementById('tiName');
+    var tiCount    = document.getElementById('tiCount');
+    var tiClear    = document.getElementById('tiClear');
+    if (!topicBar) return;
+
+    // 缓存侧栏所有 count 的原始数字，便于按议题缩放
+    var sidebarCounts = document.querySelectorAll('.sidebar .count');
+    sidebarCounts.forEach(function(el){
+      if (!el.dataset.origCount) {
+        el.dataset.origCount = (el.textContent || '0').trim();
+      }
+    });
+
+    function applyTopicToSidebar(topicCount, isAll){
+      sidebarCounts.forEach(function(el){
+        var orig = parseInt(el.dataset.origCount, 10) || 0;
+        if (isAll || orig === 0) {
+          el.textContent = String(orig);
+          return;
+        }
+        // 12 是"全部"总数，按比例缩放，至少 0，至多原值
+        var scaled = Math.max(0, Math.min(orig, Math.round(orig * (topicCount / 12))));
+        // 让"已闭合"这种较大数字略减得更明显，避免 0 占满
+        el.textContent = String(scaled);
+      });
+    }
+
+    function switchTopic(opts){
+      var topic = opts.topic;
+      var name  = opts.name;
+      var icon  = opts.icon;
+      var count = parseInt(opts.count || '0', 10);
+      var isAll = (topic === 'all');
+
+      // 1) 高亮顶部 tab
+      var allTabs = topicBar.querySelectorAll('.topic-tab');
+      allTabs.forEach(function(t){ t.classList.toggle('active', t.dataset.topic === topic); });
+      // dropdown items active 同步
+      dropdown.querySelectorAll('.topic-dd-item').forEach(function(it){
+        it.classList.toggle('active', it.dataset.topic === topic);
+      });
+
+      // 2) fade 主区，过渡中更新指示字
+      mainInner.classList.add('topic-fading');
+      setTimeout(function(){
+        if (isAll) {
+          indicator.classList.remove('visible');
+        } else {
+          tiIcon.textContent = icon || '🎯';
+          tiName.textContent = name;
+          tiCount.textContent = '(' + count + ' 枚)';
+          indicator.classList.add('visible');
+        }
+        // 3) 侧栏数字缩放
+        applyTopicToSidebar(count, isAll);
+        mainInner.classList.remove('topic-fading');
+      }, 180);
+    }
+
+    // 顶部 tab 点击
+    topicBar.querySelectorAll('.topic-tab').forEach(function(tab){
+      tab.addEventListener('click', function(){
+        switchTopic({
+          topic: tab.dataset.topic,
+          name:  tab.dataset.name,
+          icon:  tab.dataset.icon,
+          count: tab.dataset.count
+        });
+        // 切换顶部 tab 时关闭 dropdown
+        closeDropdown();
+      });
+    });
+
+    // dropdown item 点击 — 切到对应议题（不把它"提升"到顶部，保持简单）
+    dropdown.querySelectorAll('.topic-dd-item').forEach(function(it){
+      it.addEventListener('click', function(){
+        // 顶部已无该 tab，先把所有顶部 tab 取消高亮
+        topicBar.querySelectorAll('.topic-tab').forEach(function(t){ t.classList.remove('active'); });
+        switchTopic({
+          topic: it.dataset.topic,
+          name:  it.dataset.name,
+          icon:  it.dataset.icon,
+          count: it.dataset.count
+        });
+        closeDropdown();
+      });
+    });
+
+    // 指示字"查看全部" 一键回到 "全部"
+    tiClear && tiClear.addEventListener('click', function(){
+      var allTab = topicBar.querySelector('.topic-tab.all');
+      if (allTab) allTab.click();
+    });
+
+    // "更多" 下拉控制
+    function openDropdown(){
+      dropdown.classList.add('open');
+      moreBtn.classList.add('open');
+      moreBtn.setAttribute('aria-expanded', 'true');
+    }
+    function closeDropdown(){
+      dropdown.classList.remove('open');
+      moreBtn.classList.remove('open');
+      moreBtn.setAttribute('aria-expanded', 'false');
+    }
+    moreBtn && moreBtn.addEventListener('click', function(e){
+      e.stopPropagation();
+      if (dropdown.classList.contains('open')) closeDropdown();
+      else openDropdown();
+    });
+    // 点击 dropdown 外部关闭
+    document.addEventListener('click', function(e){
+      if (!dropdown.contains(e.target) && e.target !== moreBtn && !moreBtn.contains(e.target)) {
+        closeDropdown();
+      }
+    });
+    // ESC 关闭
+    document.addEventListener('keydown', function(e){
+      if (e.key === 'Escape') {
+        closeDropdown();
+        closeModal();
+      }
+    });
+
+    // "+ 新建" 浮层
+    function openModal(){
+      modal.classList.add('open');
+      setTimeout(function(){ modalInput && modalInput.focus(); }, 100);
+    }
+    function closeModal(){
+      modal.classList.remove('open');
+      if (modalInput) modalInput.value = '';
+    }
+    newBtn && newBtn.addEventListener('click', openModal);
+    modalCancel && modalCancel.addEventListener('click', closeModal);
+    modalCreate && modalCreate.addEventListener('click', closeModal); // mockup：直接关闭
+    // 点击 modal 背景关闭
+    modal && modal.addEventListener('click', function(e){
+      if (e.target === modal) closeModal();
+    });
+    // 类型选择
+    modalTypes && modalTypes.querySelectorAll('.tcc-type').forEach(function(b){
+      b.addEventListener('click', function(){
+        modalTypes.querySelectorAll('.tcc-type').forEach(function(x){ x.classList.remove('active'); });
+        b.classList.add('active');
+      });
+    });
+  })();
+</script>
+
+</body>
+</html>
