@@ -9,6 +9,8 @@
 
 **Tally** is named after the *tally stick* — split wooden tokens used in medieval bookkeeping. Two halves were given to each party; matched together, they sealed a transaction. The name also means *to count, track, or reconcile*. One word, two meanings — exactly what we do: **the token of a promise, and the act of tracking it through.**
 
+![Hero — same words, structured automatically](./mockups/screenshots/hero.png)
+
 ---
 
 ## Status
@@ -65,6 +67,8 @@ As you get comfortable, let Agents do more than just follow up — research, dra
 
 ## Mockups (open in browser)
 
+![Daily home screen](./mockups/screenshots/home.png)
+
 | File | What |
 |---|---|
 | [mockups/onboarding-en.html](./mockups/onboarding-en.html) | 9-screen product walkthrough (English) |
@@ -99,6 +103,16 @@ As you get comfortable, let Agents do more than just follow up — research, dra
 - [ ] DingTalk / Slack integration (as identity + notification, not as host)
 - [ ] Lounge layer (Break-Glass encryption)
 - [ ] Closed beta open
+
+---
+
+## Where this goes (long term)
+
+![Hardware tally — for conversations chat apps can't reach](./mockups/screenshots/vision.png)
+
+A physical tally button (badge / keychain). Press · speak · captured into Tally. For the conversations chat apps can't reach — hallway run-ins, in-car thoughts, post-meeting commits.
+
+Software ships first. Hardware after a real user base.
 
 ---
 

@@ -9,6 +9,8 @@
 
 **Tally** 取自 *tally stick*：西方古代用作凭证的劈半木棍，合而为一才能验证——是中国"虎符"的对等物。它同时也指"清点/追踪"。一个名字两层含义，精准对应我们做的事：**任务的凭证 + 任务的追踪**。
 
+![同一句话，自动结构化](./mockups/screenshots/hero.png)
+
 ---
 
 ## Status
@@ -52,6 +54,8 @@ Tally 自动：
 
 ## Mockups（在浏览器直接打开）
 
+![日常主入口](./mockups/screenshots/home.png)
+
 | 文件 | 内容 |
 |---|---|
 | [mockups/onboarding.html](./mockups/onboarding.html) | 9 屏产品介绍（中文） |
@@ -86,6 +90,17 @@ Tally 自动：
 - [ ] 接入 Slack / 钉钉 / 飞书（嵌入式工作台）
 - [ ] 私密温情层（Break-Glass 加密）
 - [ ] 开放 closed beta
+
+---
+
+## 长期形态
+
+![硬件虎符 — 为聊天工具到不了的地方](./mockups/screenshots/vision.png)
+
+一枚物理虎符（徽章/钥匙扣大小）。按一下 · 说话 · 自动入 Tally。
+为聊天工具到不了的地方——走廊偶遇、开车想到、会议刚结束的承诺。
+
+软件先上线。硬件等有真实用户基础之后再做。
 
 ---
 
